@@ -1,0 +1,17 @@
+{
+  "name": "multibank-monorepo",
+  "private": true,
+  "workspaces": ["backend", "frontend"],
+  "scripts": {
+    "install:all": "npm install",
+    "dev": "concurrently -n back,front -c blue,green \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "dev:backend": "npm --workspace backend run start:dev",
+    "dev:frontend": "npm --workspace frontend start",
+    "build": "npm -w backend run build && npm -w frontend run build",
+    "dev:docker": "docker compose up --build",
+    "down:docker": "docker compose down -v"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  }
+}
