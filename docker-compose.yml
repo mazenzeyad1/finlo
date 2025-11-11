@@ -1,0 +1,48 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: multibank
+    ports:
+      - "5432:5432"
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/multibank?schema=public
+      JWT_SECRET: ${JWT_SECRET:-dev-secret}
+      PORT: 3000
+    depends_on:
+      - db
+      - mailhog
+    ports:
+      - "3000:3000"
+    working_dir: /app
+    command: sh -lc "npx prisma db push --skip-generate && npx prisma db seed && npm run start:dev"
+
+  frontend:
+    build: ./frontend
+    environment:
+      VITE_API_BASE: http://localhost:3000/api
+    ports:
+      - "4200:4200"
+    depends_on:
+      - backend
+    working_dir: /app
+    command: npm start
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+
+volumes:
+  dbdata:
