@@ -314,11 +314,16 @@ export class SignUpPage implements OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (response) => {
-          this.resendState.set('success');
-          if (response.token) {
-            this.verificationToken.set(response.token);
+          if (response.ok) {
+            this.resendState.set('success');
+            if (response.token) {
+              this.verificationToken.set(response.token);
+            }
+            this.resendMessage.set('Verification email sent. Check your inbox.');
+          } else {
+            this.resendState.set('error');
+            this.resendMessage.set('Unable to send a new verification email right now.');
           }
-          this.resendMessage.set('Verification email sent. Check your inbox.');
           this.queueResendMessageClear();
         },
         error: (err) => {

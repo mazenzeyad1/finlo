@@ -15,7 +15,7 @@ export interface ForgotPasswordResponse {
 }
 
 export interface ResendVerificationResponse {
-  sent: boolean;
+  ok: boolean;
   token?: string;
 }
 
@@ -44,8 +44,8 @@ export class AuthApi {
     return this.http.post<{ accessToken: string; refreshToken: string; expiresIn: number }>('auth/refresh', payload);
   }
 
-  verifyEmail(token: string): Observable<{ verified: boolean; reused?: boolean }> {
-    return this.http.post<{ verified: boolean; reused?: boolean }>('auth/verify/email', { token });
+  verifyEmail(payload: { uid: string; token: string }): Observable<{ ok: boolean }> {
+    return this.http.post<{ ok: boolean }>('auth/verify', payload);
   }
 
   resendVerification(): Observable<ResendVerificationResponse> {

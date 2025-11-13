@@ -164,9 +164,14 @@ export class AppComponent implements OnInit, OnDestroy {
       .pipe(takeUntil(this.destroy$))
       .subscribe({
         next: (response) => {
-          this.resendState.set('success');
-          this.devVerificationToken.set(response.token ?? null);
-          this.resendMessage.set('Verification email sent. Preview link available in backend logs.');
+          if (response.ok) {
+            this.resendState.set('success');
+            this.devVerificationToken.set(response.token ?? null);
+            this.resendMessage.set('Verification email sent. Preview link available in backend logs.');
+          } else {
+            this.resendState.set('error');
+            this.resendMessage.set('Unable to send a new verification email right now.');
+          }
           this.queueMessageClear();
         },
         error: (err) => {
