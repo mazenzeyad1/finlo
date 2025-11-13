@@ -33,19 +33,23 @@ enum BudgetPeriod {
   custom
 }
 
+enum EmailTokenPurpose {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+}
+
 model User {
   id          String    @id @default(cuid())
   email       String    @unique
   name        String?
   password    String
   createdAt   DateTime  @default(now())
-  emailVerifiedAt DateTime?
+  emailVerified Boolean @default(false)
   connections Connection[]
   budgets     Budget[]
   categories  Category[]
   refreshTokens RefreshToken[]
-  emailVerifications EmailVerification[]
-  passwordResets PasswordReset[]
+  emailTokens EmailToken[]
   householdsOwned Household[] @relation("HouseholdOwner")
   householdMembers HouseholdMember[]
   onboardingProgress OnboardingProgress?
@@ -180,24 +184,27 @@ model RefreshToken {
   @@index([tokenHash])
 }
 
-model EmailVerification {
-  id        String   @id @default(cuid())
-  userId    String
-  tokenHash String   @unique
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id])
+model EmailToken {
+  id         String            @id @default(cuid())
+  userId     String
+  purpose    EmailTokenPurpose
+  tokenHash  String
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime         @default(now())
+  user       User             @relation(fields: [userId], references: [id])
+
+  @@index([userId, purpose, tokenHash])
 }
 
-model PasswordReset {
-  id        String   @id @default(cuid())
-  userId    String
-  tokenHash String   @unique
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id])
+model EmailLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  template   String
+  toAddress  String
+  providerId String?
+  status     String
+  createdAt  DateTime @default(now())
 }
 
 model Session {

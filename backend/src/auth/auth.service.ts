@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   Logger,
   NotFoundException,
@@ -9,19 +8,19 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { Prisma, PrismaClient, EmailVerification } from '@prisma/client';
+import { Prisma, PrismaClient, EmailTokenPurpose } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../common/prisma.service';
-import { MailerService, MailMessage } from '../common/mailer.service';
+import { MailerService } from '../common/mailer.service';
 import { SignUpDto } from './dto/signup.dto';
 import { SignInDto } from './dto/signin.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
-import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { AuthTokens } from './interfaces/auth-tokens.interface';
 import { ActiveSession } from './interfaces/active-session.interface';
+import { generateToken, hashToken } from './token.util';
 
 interface SessionMeta {
   ip?: string | null;
@@ -37,11 +36,11 @@ interface TokenComponents {
 export class AuthService {
   private readonly accessTtl: string;
   private readonly refreshTtlMs: number;
-  private readonly emailTokenTtlMs: number;
+  private readonly verificationTtlMs: number;
   private readonly resetTokenTtlMs: number;
   private readonly saltRounds = 12;
   private readonly isProduction: boolean;
-  private readonly frontendUrl: string;
+  private readonly appUrl: string;
   private readonly logger = new Logger(AuthService.name);
 
   constructor(
@@ -52,10 +51,12 @@ export class AuthService {
   ) {
     this.accessTtl = configService.get<string>('JWT_ACCESS_TTL', '15m');
     this.refreshTtlMs = Number(configService.get<string>('JWT_REFRESH_TTL_MS', `${1000 * 60 * 60 * 24 * 30}`));
-    this.emailTokenTtlMs = Number(configService.get<string>('EMAIL_TOKEN_TTL_MS', `${1000 * 60 * 60 * 24}`));
+    this.verificationTtlMs = Number(
+      configService.get<string>('EMAIL_TOKEN_TTL_MS', `${1000 * 60 * 20}`)
+    );
     this.resetTokenTtlMs = Number(configService.get<string>('RESET_TOKEN_TTL_MS', `${1000 * 60 * 60}`));
     this.isProduction = configService.get<string>('NODE_ENV') === 'production';
-    this.frontendUrl = configService.get<string>('FRONTEND_URL', 'http://localhost:4200');
+    this.appUrl = configService.get<string>('APP_URL', 'http://localhost:4200');
   }
 
   async signUp(dto: SignUpDto, meta: SessionMeta) {
@@ -80,15 +81,14 @@ export class AuthService {
 
       const session = await this.createSession(tx, user.id, meta);
       const tokens = await this.issueTokens(tx, user.id, session.id);
-      const verification = await this.createEmailVerification(tx, user.id);
-
-      return { user, session, tokens, verificationToken: verification };
+      return { user, session, tokens };
     });
 
-    await this.safeSendMail(
-      this.buildVerificationMail(result.user.email, result.verificationToken),
-      `verification email for user ${result.user.id}`
-    );
+    const verificationToken = await this.sendVerificationEmail({
+      id: result.user.id,
+      email: result.user.email,
+      firstName: result.user.name,
+    });
 
     this.logger.log(`User ${result.user.id} registered (${this.describeMeta(meta)})`);
 
@@ -97,10 +97,10 @@ export class AuthService {
         id: result.user.id,
         email: result.user.email,
         name: result.user.name,
-        emailVerified: Boolean(result.user.emailVerifiedAt),
+        emailVerified: result.user.emailVerified,
       },
       tokens: result.tokens,
-      emailVerificationToken: this.isProduction ? undefined : result.verificationToken,
+      emailVerificationToken: this.isProduction ? undefined : verificationToken,
     };
   }
 
@@ -125,12 +125,13 @@ export class AuthService {
 
     this.logger.log(`User ${user.id} signed in (${this.describeMeta(meta)})`);
 
+    // TODO(copilot): On login, if emailVerified=false, show banner with a "Resend verification" action.
     return {
       user: {
         id: user.id,
         email: user.email,
         name: user.name,
-        emailVerified: Boolean(user.emailVerifiedAt),
+        emailVerified: user.emailVerified,
       },
       tokens,
     };
@@ -183,64 +184,82 @@ export class AuthService {
     return result;
   }
 
-  async verifyEmail(userId: string, dto: VerifyEmailDto) {
-    const { record, secret } = await this.getVerificationRecord(dto.token);
-    if (record.userId !== userId) {
-      throw new ForbiddenException('Invalid verification token');
+  // TODO(copilot): Add unit tests for verifyEmail: valid, expired, used token.
+  async verifyEmail(uid: string, token: string) {
+    const hashed = hashToken(token);
+    const record = await this.prisma.emailToken.findFirst({
+      where: {
+        userId: uid,
+        purpose: EmailTokenPurpose.VERIFY_EMAIL,
+        tokenHash: hashed,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+    });
+
+    if (!record) {
+      throw new BadRequestException('Invalid or expired token');
     }
 
-    const result = await this.consumeEmailVerification(record, secret);
-    if (result.verified && !result.reused) {
-      this.logger.log(`User ${record.userId} verified email via authenticated request`);
-    }
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: uid },
+        data: { emailVerified: true },
+      }),
+      this.prisma.emailToken.update({
+        where: { id: record.id },
+        data: { usedAt: new Date() },
+      }),
+    ]);
 
-    return result;
-  }
+    this.logger.log(`User ${uid} verified email via token`);
 
-  async verifyEmailFromLink(dto: VerifyEmailDto, meta?: SessionMeta) {
-    const { record, secret } = await this.getVerificationRecord(dto.token);
-    const result = await this.consumeEmailVerification(record, secret);
-
-    if (result.verified && !result.reused) {
-      this.logger.log(`User ${record.userId} verified email via link (${this.describeMeta(meta)})`);
-    }
-
-    return result;
+    return { ok: true };
   }
 
   async resendVerification(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      throw new NotFoundException('User not found');
+    if (!user || user.emailVerified) {
+      return { ok: true };
     }
 
-    const verification = await this.createEmailVerification(this.prisma, userId);
-
-    await this.safeSendMail(
-      this.buildVerificationMail(user.email, verification),
-      `verification email for user ${userId}`
-    );
+    const token = await this.sendVerificationEmail({
+      id: user.id,
+      email: user.email,
+      firstName: user.name,
+    });
 
     this.logger.log(`Resent verification email for user ${userId}`);
 
-    return this.isProduction ? { sent: true } : { sent: true, token: verification };
+    return this.isProduction ? { ok: true } : { ok: true, token };
   }
 
   async forgotPassword(dto: ForgotPasswordDto, meta?: SessionMeta) {
     const email = dto.email.toLowerCase();
     const user = await this.prisma.user.findUnique({ where: { email } });
+    // TODO(copilot): Normalize auth error messages to avoid revealing if an email exists.
     if (!user) {
-      // Obfuscate response to avoid email enumeration
       this.logger.warn(`Password reset requested for unknown email ${email} (${this.describeMeta(meta)})`);
       return { sent: true };
     }
 
-    const token = await this.createPasswordReset(this.prisma, user.id);
-
-    await this.safeSendMail(
-      this.buildPasswordResetMail(user.email, token),
-      `password reset email for user ${user.id}`
+    const token = await this.createEmailToken(
+      user.id,
+      EmailTokenPurpose.RESET_PASSWORD,
+      this.resetTokenTtlMs
     );
+    const resetUrl = this.buildAppUrl('/reset-password', { token });
+    const name = user.name ?? user.email;
+    const { subject, html, text } = this.buildPasswordResetEmail(name, resetUrl);
+
+    await this.sendEmailAndLog({
+      userId: user.id,
+      template: 'reset-password',
+      to: user.email,
+      subject,
+      html,
+      text,
+    });
 
     this.logger.log(`Password reset email issued for user ${user.id} (${this.describeMeta(meta)})`);
 
@@ -248,29 +267,28 @@ export class AuthService {
   }
 
   async resetPassword(dto: ResetPasswordDto, meta?: SessionMeta) {
-    const parsed = this.parseToken(dto.token);
-    const record = await this.prisma.passwordReset.findUnique({ where: { id: parsed.id } });
+    const hashed = hashToken(dto.token);
+    const record = await this.prisma.emailToken.findFirst({
+      where: {
+        purpose: EmailTokenPurpose.RESET_PASSWORD,
+        tokenHash: hashed,
+        usedAt: null,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
     if (!record) {
       throw new BadRequestException('Invalid reset token');
-    }
-
-    if (record.usedAt) {
-      throw new BadRequestException('Reset token already used');
     }
 
     if (record.expiresAt < new Date()) {
       throw new BadRequestException('Reset token expired');
     }
 
-    const matches = await bcrypt.compare(parsed.secret, record.tokenHash);
-    if (!matches) {
-      throw new BadRequestException('Reset token invalid');
-    }
-
     const passwordHash = await bcrypt.hash(dto.password, this.saltRounds);
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.passwordReset.update({
+      await tx.emailToken.update({
         where: { id: record.id },
         data: { usedAt: new Date() },
       });
@@ -314,44 +332,6 @@ export class AuthService {
     return { revoked: true };
   }
 
-  private async getVerificationRecord(token: string): Promise<{ record: EmailVerification; secret: string }> {
-    const parsed = this.parseToken(token);
-    const record = await this.prisma.emailVerification.findUnique({ where: { id: parsed.id } });
-    if (!record) {
-      throw new ForbiddenException('Invalid verification token');
-    }
-
-    return { record, secret: parsed.secret };
-  }
-
-  private async consumeEmailVerification(record: EmailVerification, secret: string) {
-    if (record.usedAt) {
-      return { verified: Boolean(await this.ensureEmailVerified(record.userId)), reused: true };
-    }
-
-    if (record.expiresAt < new Date()) {
-      throw new ForbiddenException('Verification token expired');
-    }
-
-    const matches = await bcrypt.compare(secret, record.tokenHash);
-    if (!matches) {
-      throw new ForbiddenException('Verification token invalid');
-    }
-
-    await this.prisma.$transaction(async (tx) => {
-      await tx.emailVerification.update({
-        where: { id: record.id },
-        data: { usedAt: new Date() },
-      });
-      await tx.user.update({
-        where: { id: record.userId },
-        data: { emailVerifiedAt: new Date() },
-      });
-    });
-
-    return { verified: true } as const;
-  }
-
   private describeMeta(meta?: SessionMeta) {
     const ip = meta?.ip ?? 'ip:unknown';
     const agent = meta?.userAgent ?? 'agent:unknown';
@@ -362,62 +342,101 @@ export class AuthService {
     this.logger.warn(`Failed sign-in for ${email}: ${reason} (${this.describeMeta(meta)})`);
   }
 
-  private buildVerificationMail(email: string, token: string): MailMessage {
-    const url = new URL('/verify-email', this.frontendUrl);
-    url.searchParams.set('token', token);
+  private async sendVerificationEmail(user: { id: string; email: string; firstName?: string | null }) {
+    const token = await this.createEmailToken(
+      user.id,
+      EmailTokenPurpose.VERIFY_EMAIL,
+      this.verificationTtlMs
+    );
+    const verifyUrl = this.buildAppUrl('/verify', { token, uid: user.id });
+    const name = user.firstName ?? user.email;
+    const { subject, html, text } = this.buildVerificationEmail(name, verifyUrl);
 
-    const subject = 'Verify your email address';
+    await this.sendEmailAndLog({
+      userId: user.id,
+      template: 'verify-email',
+      to: user.email,
+      subject,
+      html,
+      text,
+    });
+
+    return token;
+  }
+
+  private buildVerificationEmail(name: string, verifyUrl: string) {
+    const subject = 'Verify your email';
     const text = [
-      'Thanks for signing up for the finance dashboard.',
-      `Confirm your email by visiting: ${url.toString()}`,
-      'If you did not create an account, you can ignore this message.',
+      `Hi ${name},`,
+      'Please verify your email address to finish setting up your account.',
+      `Verification link: ${verifyUrl}`,
+      "If you didn't create an account, you can safely ignore this message.",
     ].join('\n\n');
 
     const html = [
-      '<p>Thanks for signing up for the finance dashboard.</p>',
-      `<p><a href="${url.toString()}">Confirm your email address</a></p>`,
-      '<p>If you did not create an account, you can ignore this message.</p>',
+      `<p>Hi ${name},</p>`,
+      '<p>Please verify your email address to finish setting up your account.</p>',
+      `<p><a href="${verifyUrl}" style="color:#2563eb;text-decoration:underline;">Verify email</a></p>`,
+  "<p>If you didn't create an account, you can safely ignore this message.</p>",
     ].join('');
 
-    return {
-      to: email,
-      subject,
-      text,
-      html,
-    };
+    return { subject, html, text };
   }
 
-  private buildPasswordResetMail(email: string, token: string): MailMessage {
-    const url = new URL('/reset-password', this.frontendUrl);
-    url.searchParams.set('token', token);
-
+  private buildPasswordResetEmail(name: string, resetUrl: string) {
     const subject = 'Reset your password';
     const text = [
-      'A request was made to reset your password.',
-      `Reset your password by visiting: ${url.toString()}`,
-      'If you did not request this change, you can ignore this message.',
+      `Hi ${name},`,
+      'You requested to reset your password.',
+      `Reset link: ${resetUrl}`,
+      "If you didn't request this, you can ignore this email.",
     ].join('\n\n');
 
     const html = [
-      '<p>A request was made to reset your password.</p>',
-      `<p><a href="${url.toString()}">Reset your password</a></p>`,
-      '<p>If you did not request this change, you can ignore this message.</p>',
+      `<p>Hi ${name},</p>`,
+      '<p>You requested to reset your password.</p>',
+      `<p><a href="${resetUrl}" style="color:#2563eb;text-decoration:underline;">Reset password</a></p>`,
+  "<p>If you didn't request this, you can safely ignore this message.</p>",
     ].join('');
 
-    return {
-      to: email,
-      subject,
-      text,
-      html,
-    };
+    return { subject, html, text };
   }
 
-  private async safeSendMail(message: MailMessage, context: string) {
+  private async sendEmailAndLog(options: {
+    userId?: string;
+    template: string;
+    to: string;
+    subject: string;
+    html: string;
+    text: string;
+  }) {
+    let status = 'sent';
+    let providerId: string | undefined;
+    let error: unknown;
+
     try {
-      await this.mailer.send(message);
-    } catch (error) {
-      const stack = error instanceof Error ? error.stack : undefined;
-      this.logger.error(`Failed to send ${context}`, stack);
+      const result = await this.mailer.sendBasic(options.to, options.subject, options.html, options.text);
+      providerId = result.messageId;
+    } catch (err) {
+      status = 'failed';
+      error = err;
+      if (err instanceof Error) {
+        this.logger.error(`Failed to send ${options.template} email to ${options.to}: ${err.message}`);
+      }
+    }
+
+    await this.prisma.emailLog.create({
+      data: {
+        userId: options.userId ?? null,
+        template: options.template,
+        toAddress: options.to,
+        providerId,
+        status,
+      },
+    });
+
+    if (error) {
+      throw error;
     }
   }
 
@@ -479,38 +498,6 @@ export class AuthService {
 
     const refreshToken = this.composeToken(newToken.id, refreshSecret);
     return { accessToken, refreshToken, expiresIn: this.parseExpiresIn(this.accessTtl) };
-  }
-
-  private async createEmailVerification(tx: Prisma.TransactionClient | PrismaClient, userId: string) {
-    const secret = this.generateSecret();
-    const tokenHash = await bcrypt.hash(secret, this.saltRounds);
-    const expiresAt = new Date(Date.now() + this.emailTokenTtlMs);
-
-    const record = await tx.emailVerification.create({
-      data: {
-        userId,
-        tokenHash,
-        expiresAt,
-      },
-    });
-
-    return this.composeToken(record.id, secret);
-  }
-
-  private async createPasswordReset(tx: Prisma.TransactionClient | PrismaClient, userId: string) {
-    const secret = this.generateSecret();
-    const tokenHash = await bcrypt.hash(secret, this.saltRounds);
-    const expiresAt = new Date(Date.now() + this.resetTokenTtlMs);
-
-    const record = await tx.passwordReset.create({
-      data: {
-        userId,
-        tokenHash,
-        expiresAt,
-      },
-    });
-
-    return this.composeToken(record.id, secret);
   }
 
   private parseToken(token: string): TokenComponents {
@@ -577,8 +564,38 @@ export class AuthService {
     });
   }
 
-  private async ensureEmailVerified(userId: string) {
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    return user?.emailVerifiedAt;
+  private async createEmailToken(
+    userId: string,
+    purpose: EmailTokenPurpose,
+    ttlMs: number
+  ) {
+    await this.prisma.emailToken.deleteMany({
+      where: {
+        userId,
+        purpose,
+        usedAt: null,
+      },
+    });
+
+    const token = generateToken(32);
+    await this.prisma.emailToken.create({
+      data: {
+        userId,
+        purpose,
+        tokenHash: hashToken(token),
+        expiresAt: new Date(Date.now() + ttlMs),
+      },
+    });
+
+    return token;
   }
+
+  private buildAppUrl(path: string, params: Record<string, string>) {
+    const url = new URL(path, this.appUrl);
+    Object.entries(params).forEach(([key, value]) => {
+      url.searchParams.set(key, value);
+    });
+    return url.toString();
+  }
+
 }

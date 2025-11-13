@@ -1,110 +1,56 @@
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
-import { Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { MailerService } from './mailer.service';
 
-jest.mock('nodemailer', () => ({
-  createTransport: jest.fn(),
-  createTestAccount: jest.fn(),
-  getTestMessageUrl: jest.fn(),
-}));
+jest.mock('@aws-sdk/client-sesv2', () => {
+  const sendMock = jest.fn(async () => ({ MessageId: 'msg-123' }));
+  return {
+    SESv2Client: jest.fn().mockImplementation(() => ({ send: sendMock })),
+    SendEmailCommand: jest.fn().mockImplementation((input) => input),
+  };
+});
 
-const { createTransport, createTestAccount, getTestMessageUrl } = jest.requireMock('nodemailer') as {
-  createTransport: jest.MockedFunction<typeof import('nodemailer')['createTransport']>;
-  createTestAccount: jest.MockedFunction<typeof import('nodemailer')['createTestAccount']>;
-  getTestMessageUrl: jest.MockedFunction<typeof import('nodemailer')['getTestMessageUrl']>;
+const { SESv2Client } = jest.requireMock('@aws-sdk/client-sesv2') as unknown as {
+  SESv2Client: jest.Mock;
 };
 
 describe('MailerService', () => {
-  const createConfig = (values: Record<string, string | undefined>) => {
-    return {
-      get: jest.fn((key: string, defaultValue?: string) => (key in values ? values[key] : defaultValue)),
-    } as unknown as ConfigService;
-  };
+  const originalEnv = process.env;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    createTestAccount.mockResolvedValue({
-      user: 'ethereal.user',
-      pass: 'ethereal.pass',
-      smtp: { host: 'smtp.ethereal.email', port: 587, secure: false },
-    });
-    getTestMessageUrl.mockReturnValue('https://ethereal.email/message/test');
+    process.env = { ...originalEnv };
+    process.env.MAIL_FROM_NAME = 'Test App';
+    process.env.MAIL_FROM_ADDRESS = 'from@example.com';
   });
 
   afterEach(() => {
+    process.env = originalEnv;
     jest.restoreAllMocks();
   });
 
-  it('verifies transport and sends real emails when configured', async () => {
-    const verify = jest.fn(async () => true);
-    const sendMail = jest.fn(async () => ({}));
-    createTransport.mockReturnValue({ verify, sendMail });
+  it('sends via SES when provider is ses', async () => {
+    process.env.EMAIL_PROVIDER = 'ses';
+    process.env.AWS_REGION = 'us-east-1';
+    const service = new MailerService();
 
-    const config = createConfig({
-      MAIL_FROM: 'support@example.com',
-      MAIL_FROM_NAME: 'Finance Desk',
-      NODE_ENV: 'production',
-      MAIL_URL: 'smtp://user:secret@smtp.example.com:2525',
-    });
+    const result = await service.sendBasic('to@example.com', 'Subject', '<p>Hello</p>', 'Hello');
 
-    const service = new MailerService(config);
-    await service.onModuleInit();
-    await service.send({ to: 'user@example.com', subject: 'Test', text: 'Hello world' });
-
-    expect(createTransport).toHaveBeenCalledWith('smtp://user:secret@smtp.example.com:2525');
-    expect(verify).toHaveBeenCalled();
-    expect(sendMail).toHaveBeenCalledWith(
-      expect.objectContaining({
-        to: 'user@example.com',
-        from: 'Finance Desk <support@example.com>',
-        subject: 'Test',
-      })
+    expect(SESv2Client).toHaveBeenCalledWith(
+      expect.objectContaining({ region: 'us-east-1' })
     );
+  const clientInstance = SESv2Client.mock.results[0].value as { send: jest.Mock };
+    expect(clientInstance.send).toHaveBeenCalled();
+    expect(result).toEqual({ messageId: 'msg-123' });
   });
 
-  it('logs simulated delivery when transport is missing', async () => {
-    const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-    const warnSpy = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+  it('logs to console when provider is dev', async () => {
+    process.env.EMAIL_PROVIDER = 'dev';
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+    const service = new MailerService();
 
-    const config = createConfig({
-      NODE_ENV: 'development',
-      MAIL_HOST: undefined,
-    });
+    const result = await service.sendBasic('dev@example.com', 'Hi', '<p>Hi</p>', 'Hi');
 
-    const service = new MailerService(config);
-    await service.onModuleInit();
-    await service.send({ to: 'user@example.com', subject: 'Test', text: 'Missing transport' });
-
-    expect(createTransport).not.toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Simulated email delivery to user@example.com'));
-    expect(warnSpy).toHaveBeenCalledWith('Mail transport not configured; emails will be logged locally.');
-  });
-
-  it('creates ethereal transport when enabled', async () => {
-    const verify = jest.fn(async () => true);
-    const sendMail = jest.fn(async () => ({ messageId: 'abc123' }));
-    createTransport.mockReturnValue({ verify, sendMail });
-
-    const logSpy = jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-
-    const config = createConfig({
-      NODE_ENV: 'development',
-      MAIL_USE_ETHEREAL: 'true',
-    });
-
-    const service = new MailerService(config);
-    await service.onModuleInit();
-    await service.send({ to: 'ethereal@example.com', subject: 'Ethereal', text: 'Hello Ethereal' });
-
-    expect(createTestAccount).toHaveBeenCalled();
-    expect(createTransport).toHaveBeenCalledWith({
-      host: 'smtp.ethereal.email',
-      port: 587,
-      secure: false,
-      auth: { user: 'ethereal.user', pass: 'ethereal.pass' },
-    });
-    expect(getTestMessageUrl).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Preview email in Ethereal'));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('dev@example.com'));
+    expect(result).toEqual({ messageId: 'dev' });
   });
 });

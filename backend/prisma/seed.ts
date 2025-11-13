@@ -14,8 +14,8 @@ async function main() {
       id: userId,
       email: 'demo@multibank.local',
       name: 'Demo User',
-      password: 'demo-password',
-      emailVerifiedAt: new Date()
+  password: 'demo-password',
+  emailVerified: true
     }
   });
 

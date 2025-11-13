@@ -16,11 +16,11 @@ import { AuthService } from './auth.service';
 import { SignUpDto } from './dto/signup.dto';
 import { SignInDto } from './dto/signin.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
-import { VerifyEmailDto } from './dto/verify-email.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { ActiveUser } from './decorators/active-user.decorator';
+import { VerifyEmailDto } from './dto/verify-email.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -58,25 +58,14 @@ export class AuthController {
   }
 
   @Post('verify')
-  @UseGuards(JwtAuthGuard)
-  async verify(@ActiveUser() user: { userId: string }, @Body() dto: VerifyEmailDto) {
-    return this.authService.verifyEmail(user.userId, dto);
-  }
-
-  @Post('verify/email')
-  @Throttle({ 'verify-email': { limit: 5, ttl: 300 } })
-  @HttpCode(HttpStatus.OK)
-  async verifyFromLink(
-    @Body() dto: VerifyEmailDto,
-    @Headers('user-agent') userAgent: string | undefined,
-    @Ip() ip: string | undefined
-  ) {
-    return this.authService.verifyEmailFromLink(dto, { userAgent, ip });
+  @Throttle({ verify: { limit: 1, ttl: 60 } })
+  async verify(@Body() dto: VerifyEmailDto) {
+    return this.authService.verifyEmail(dto.uid, dto.token);
   }
 
   @Post('verify/resend')
-  @Throttle({ 'verify-resend': { limit: 3, ttl: 300 } })
   @UseGuards(JwtAuthGuard)
+  @Throttle({ 'verify-resend': { limit: 1, ttl: 60 } })
   async resend(@ActiveUser() user: { userId: string }) {
     return this.authService.resendVerification(user.userId);
   }
