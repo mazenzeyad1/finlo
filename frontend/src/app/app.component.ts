@@ -24,6 +24,7 @@ import { AuthStore } from './state/auth.store';
         <nav class="nav-list">
           <a routerLink="/dashboard" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" class="nav-item">Dashboard</a>
           <a routerLink="/accounts" routerLinkActive="active" class="nav-item">Accounts</a>
+          <a routerLink="/connections" routerLinkActive="active" class="nav-item">Connections</a>
           <a routerLink="/transactions" routerLinkActive="active" class="nav-item">Transactions</a>
           <a routerLink="/budgets" routerLinkActive="active" class="nav-item">Budgets</a>
         </nav>

@@ -2,6 +2,9 @@ import { Component, inject, signal } from '@angular/core';
 import { CommonModule, NgFor, NgIf } from '@angular/common';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { ConnectionApi } from '../api/connection.api';
+import { AccountApi } from '../api/account.api';
+import { AuthStore } from '../../state/auth.store';
+import { AppStore } from '../../state/app.store';
 import { InstitutionBadgeComponent } from '../../shared/components/institution-badge.component';
 
 @Component({
@@ -132,9 +135,12 @@ import { InstitutionBadgeComponent } from '../../shared/components/institution-b
 })
 export class ConnectionsPage {
   private api = inject(ConnectionApi);
+  private accountApi = inject(AccountApi);
   private sanitizer = inject(DomSanitizer);
+  private auth = inject(AuthStore);
+  private appStore = inject(AppStore);
   
-  userId = 'demo-user';
+  userId = this.auth.user()?.id || 'demo-user';
   connections: any[] = [];
   isLinking = signal(false);
   flinksUrl = signal<SafeResourceUrl | null>(null);
@@ -184,8 +190,12 @@ export class ConnectionsPage {
         try {
           await this.api.exchange({ userId: this.userId, publicToken: loginId }).toPromise();
           await this.refresh();
+          // Auto-fetch accounts after successful connection
+          this.accountApi.list(this.userId).subscribe(accounts => {
+            this.appStore.setAccounts(accounts);
+          });
           this.closeFlinks();
-          alert('Bank connected successfully!');
+          alert('Bank connected successfully! Check the Accounts page to see your linked accounts.');
         } catch (err) {
           console.error('Failed to exchange Flinks token', err);
           alert('Failed to complete connection. Please try again.');
