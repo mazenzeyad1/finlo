@@ -52,11 +52,13 @@ export class AuthService {
     this.accessTtl = configService.get<string>('JWT_ACCESS_TTL', '15m');
     this.refreshTtlMs = Number(configService.get<string>('JWT_REFRESH_TTL_MS', `${1000 * 60 * 60 * 24 * 30}`));
     this.verificationTtlMs = Number(
-      configService.get<string>('EMAIL_TOKEN_TTL_MS', `${1000 * 60 * 20}`)
+      configService.get<string>('EMAIL_TOKEN_TTL_MS', `${1000 * 60 * 60 * 24}`)
     );
     this.resetTokenTtlMs = Number(configService.get<string>('RESET_TOKEN_TTL_MS', `${1000 * 60 * 60}`));
     this.isProduction = configService.get<string>('NODE_ENV') === 'production';
-    this.appUrl = configService.get<string>('APP_URL', 'http://localhost:4200');
+    this.appUrl =
+      configService.get<string>('APP_BASE_URL') ||
+      configService.get<string>('APP_URL', 'http://localhost:4200');
   }
 
   async signUp(dto: SignUpDto, meta: SessionMeta) {
@@ -217,10 +219,60 @@ export class AuthService {
     return { ok: true };
   }
 
+  // New: verify email using only the token (for GET /auth/verify-email?token=...)
+  async verifyEmailByToken(token: string) {
+    const hashed = hashToken(token);
+    const record = await this.prisma.emailToken.findFirst({
+      where: {
+        purpose: EmailTokenPurpose.VERIFY_EMAIL,
+        tokenHash: hashed,
+        usedAt: null,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!record) {
+      throw new BadRequestException('Invalid or expired token');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: record.userId },
+        data: { emailVerified: true },
+      }),
+      this.prisma.emailToken.update({
+        where: { id: record.id },
+        data: { usedAt: new Date() },
+      }),
+    ]);
+
+    this.logger.log(`User ${record.userId} verified email via token`);
+
+    return { ok: true };
+  }
+
   async resendVerification(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user || user.emailVerified) {
-      return { ok: true };
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    if (user.emailVerified) {
+      throw new BadRequestException('Email already verified');
+    }
+
+    // DB-backed rate limit: allow once per 5 minutes
+    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+    const recent = await this.prisma.emailLog.findFirst({
+      where: {
+        userId,
+        template: 'verify-email',
+        createdAt: { gt: fiveMinutesAgo },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (recent) {
+      throw new BadRequestException('Please wait before requesting another verification email');
     }
 
     const token = await this.sendVerificationEmail({
@@ -332,6 +384,19 @@ export class AuthService {
     return { revoked: true };
   }
 
+  async getUserById(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    return {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      emailVerified: user.emailVerified,
+    };
+  }
+
   private describeMeta(meta?: SessionMeta) {
     const ip = meta?.ip ?? 'ip:unknown';
     const agent = meta?.userAgent ?? 'agent:unknown';
@@ -348,9 +413,11 @@ export class AuthService {
       EmailTokenPurpose.VERIFY_EMAIL,
       this.verificationTtlMs
     );
-    const verifyUrl = this.buildAppUrl('/verify', { token, uid: user.id });
+    const verifyUrl = this.buildAppUrl('/verify', { uid: user.id, token });
+    this.logger.log(`Verification URL for ${user.email}: ${verifyUrl}`);
     const name = user.firstName ?? user.email;
     const { subject, html, text } = this.buildVerificationEmail(name, verifyUrl);
+    this.logger.log(`Email HTML includes href: ${html.includes('href=')}, text includes link: ${text.includes('http')}`);
 
     await this.sendEmailAndLog({
       userId: user.id,
@@ -377,9 +444,10 @@ export class AuthService {
       `<p>Hi ${name},</p>`,
       '<p>Please verify your email address to finish setting up your account.</p>',
       `<p><a href="${verifyUrl}" style="color:#2563eb;text-decoration:underline;">Verify email</a></p>`,
-  "<p>If you didn't create an account, you can safely ignore this message.</p>",
+      "<p>If you didn't create an account, you can safely ignore this message.</p>",
     ].join('');
 
+    this.logger.debug(`Built verification email with URL: ${verifyUrl}`);
     return { subject, html, text };
   }
 
@@ -396,7 +464,7 @@ export class AuthService {
       `<p>Hi ${name},</p>`,
       '<p>You requested to reset your password.</p>',
       `<p><a href="${resetUrl}" style="color:#2563eb;text-decoration:underline;">Reset password</a></p>`,
-  "<p>If you didn't request this, you can safely ignore this message.</p>",
+      "<p>If you didn't request this, you can safely ignore this message.</p>",
     ].join('');
 
     return { subject, html, text };
@@ -465,12 +533,7 @@ export class AuthService {
     });
   }
 
-  private async issueTokens(
-  tx: Prisma.TransactionClient | PrismaClient,
-    userId: string,
-    sessionId: string,
-    previousTokenId?: string
-  ): Promise<AuthTokens> {
+  private async issueTokens(tx: Prisma.TransactionClient | PrismaClient, userId: string, sessionId: string, previousTokenId?: string): Promise<AuthTokens> {
     const payload = { sub: userId, sid: sessionId };
     const accessToken = await this.jwt.signAsync(payload, { expiresIn: this.accessTtl });
     const refreshSecret = this.generateSecret();

@@ -205,7 +205,11 @@ export class SignInPage implements OnDestroy {
       .subscribe({
         next: (response) => {
           this.authStore.setSession(response.user, response.tokens);
-          this.authStore.clearPostResetNotice();
+          if (!response.user.emailVerified) {
+            this.authStore.setPostResetNotice('Please verify your email address to access all features.');
+          } else {
+            this.authStore.clearPostResetNotice();
+          }
           this.status.set('idle');
           const desired = this.route.snapshot.queryParamMap.get('redirectTo');
           const safeRedirect = desired && desired.startsWith('/') && !desired.startsWith('/auth/') ? desired : '/dashboard';

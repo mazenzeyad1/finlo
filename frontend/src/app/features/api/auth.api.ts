@@ -67,4 +67,8 @@ export class AuthApi {
   revokeSession(id: string): Observable<{ revoked: boolean }> {
     return this.http.delete<{ revoked: boolean }>(`auth/sessions/${encodeURIComponent(id)}`);
   }
+
+  me(): Observable<AuthUser> {
+    return this.http.get<AuthUser>('auth/me');
+  }
 }

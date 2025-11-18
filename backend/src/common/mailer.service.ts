@@ -1,50 +1,36 @@
-import { Injectable } from '@nestjs/common';
-import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
-
-type Provider = 'ses' | 'dev';
+import { Injectable, Logger } from '@nestjs/common';
+import * as nodemailer from 'nodemailer';
+import type { Transporter } from 'nodemailer';
 
 @Injectable()
 export class MailerService {
-  private provider: Provider = (process.env.EMAIL_PROVIDER as Provider) || 'dev';
+  private readonly logger = new Logger(MailerService.name);
+  private smtp: Transporter;
   private from = `"${process.env.MAIL_FROM_NAME}" <${process.env.MAIL_FROM_ADDRESS}>`;
-  private ses?: SESv2Client;
 
   constructor() {
-    if (this.provider === 'ses') {
-      this.ses = new SESv2Client({
-        region: process.env.AWS_REGION || 'us-east-1',
-        credentials: process.env.AWS_ACCESS_KEY_ID
-          ? {
-              accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-              secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-            }
-          : undefined,
-      });
-    }
+    this.smtp = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT || '587', 10),
+      secure: process.env.SMTP_SECURE === 'true',
+      auth: process.env.SMTP_USER && process.env.SMTP_PASSWORD
+        ? {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASSWORD,
+          }
+        : undefined,
+    });
+    this.logger.log(`SMTP configured: ${process.env.SMTP_HOST}:${process.env.SMTP_PORT}`);
   }
 
   async sendBasic(to: string, subject: string, html: string, text?: string) {
-    if (this.provider === 'ses' && this.ses) {
-      const cmd = new SendEmailCommand({
-        FromEmailAddress: this.from,
-        Destination: { ToAddresses: [to] },
-        Content: {
-          Simple: {
-            Subject: { Data: subject },
-            Body: {
-              Html: { Data: html },
-              Text: text ? { Data: text } : undefined,
-            },
-          },
-        },
-      });
-      const res = await this.ses.send(cmd);
-      return { messageId: res.MessageId || '' };
-    }
-
-    // Dev fallback
-    // eslint-disable-next-line no-console
-    console.log(`[DEV EMAIL] → ${to}\nSubj: ${subject}\n${text ?? html}`);
-    return { messageId: 'dev' };
+    const info = await this.smtp.sendMail({
+      from: this.from,
+      to,
+      subject,
+      html,
+      text: text || html.replace(/<[^>]*>/g, ''),
+    });
+    return { messageId: info.messageId };
   }
 }

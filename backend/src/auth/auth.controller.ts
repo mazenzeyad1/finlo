@@ -10,6 +10,7 @@ import {
   Param,
   Post,
   UseGuards,
+  Query,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
@@ -25,6 +26,18 @@ import { VerifyEmailDto } from './dto/verify-email.dto';
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
+
+  // Alias as requested: POST /auth/register (maps to existing signUp logic)
+  @Post('register')
+  @Throttle({ signup: { limit: 5, ttl: 300 } })
+  async register(
+    @Body() dto: SignUpDto,
+    @Headers('user-agent') userAgent: string | undefined,
+    @Ip() ip: string | undefined
+  ) {
+    const result = await this.authService.signUp(dto, { userAgent, ip });
+    return result.user;
+  }
 
   @Post('signup')
   @Throttle({ signup: { limit: 5, ttl: 300 } })
@@ -63,10 +76,28 @@ export class AuthController {
     return this.authService.verifyEmail(dto.uid, dto.token);
   }
 
+  // New as requested: GET /auth/verify-email?token=...
+  @Get('verify-email')
+  @Throttle({ verify: { limit: 3, ttl: 300 } })
+  async verifyEmailGet(@Query('token') token: string) {
+    if (!token) {
+      return { ok: false, message: 'Missing token' };
+    }
+    return this.authService.verifyEmailByToken(token);
+  }
+
   @Post('verify/resend')
   @UseGuards(JwtAuthGuard)
   @Throttle({ 'verify-resend': { limit: 1, ttl: 60 } })
   async resend(@ActiveUser() user: { userId: string }) {
+    return this.authService.resendVerification(user.userId);
+  }
+
+  // New as requested: POST /auth/resend-verification
+  @Post('resend-verification')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ 'verify-resend': { limit: 1, ttl: 60 } })
+  async resendVerification(@ActiveUser() user: { userId: string }) {
     return this.authService.resendVerification(user.userId);
   }
 
@@ -102,5 +133,11 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   async revokeSession(@ActiveUser() user: { userId: string }, @Param('id') id: string) {
     return this.authService.revokeSessionById(user.userId, id);
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  async me(@ActiveUser() user: { userId: string }) {
+    return this.authService.getUserById(user.userId);
   }
 }

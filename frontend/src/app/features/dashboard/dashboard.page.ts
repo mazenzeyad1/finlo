@@ -3,11 +3,12 @@ import { NgFor, CommonModule } from '@angular/common';
 import { AccountApi } from '../api/account.api';
 import { AppStore } from '../../state/app.store';
 import { MoneyComponent } from '../../shared/components/money.component';
+import { VerificationBannerComponent } from '../../shared/components/verification-banner.component';
 
 @Component({
   standalone: true,
   selector: 'app-dashboard',
-  imports: [CommonModule, NgFor, MoneyComponent],
+  imports: [CommonModule, NgFor, MoneyComponent, VerificationBannerComponent],
   template: `
     <section class="page">
       <header class="section-heading">
@@ -17,6 +18,8 @@ import { MoneyComponent } from '../../shared/components/money.component';
         </div>
         <span class="helper-text">{{ accounts.length }} accounts</span>
       </header>
+
+      <verification-banner></verification-banner>
 
       <div class="kpi-grid">
         <div class="kpi-card">
