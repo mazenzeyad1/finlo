@@ -12,10 +12,10 @@ async function main() {
     update: {},
     create: {
       id: userId,
-      email: 'demo@multibank.local',
+      email: 'demo@finlo.local',
       name: 'Demo User',
-      password: 'demo-password',
-      emailVerifiedAt: new Date()
+  password: 'demo-password',
+  emailVerified: true
     }
   });
 
@@ -25,7 +25,7 @@ async function main() {
     create: {
       id: 'td-bank',
       name: 'TD Bank',
-      provider: 'plaid'
+      provider: 'flinks'
     }
   });
 

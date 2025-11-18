@@ -1,6 +1,6 @@
-# Clean Architecture Multi‑Bank Finance App
+# Finlo - Personal Finance App
 
-A full-stack scaffold for a finance dashboard that aggregates multiple bank connections.
+A full-stack application for managing your personal finances and bank connections.
 
 - **Backend:** NestJS 10, Prisma 5, PostgreSQL, Ports & Adapters architecture with provider stubs for Plaid/Flinks.
 - **Frontend:** Angular 18 (standalone components) compiled by Vite 5 with `@analogjs/vite-plugin-angular`.
@@ -55,10 +55,13 @@ fr_app/
    ```powershell
    Copy-Item backend/.env.example backend/.env
    ```
-   - Update `DATABASE_URL` if you do not plan to use the Docker Postgres container.
-   - Tune auth token lifetimes with `JWT_ACCESS_TTL`, `JWT_REFRESH_TTL_MS`, `EMAIL_TOKEN_TTL_MS`, and `RESET_TOKEN_TTL_MS` (defaults cover most dev scenarios).
-   - Configure `FRONTEND_URL` so verification/reset links point to the right UI host and set `MAIL_FROM` to the sender address you want users to see.
-   - Provide SMTP credentials (`MAIL_URL` **or** `MAIL_HOST`/`MAIL_PORT`/`MAIL_USER`/`MAIL_PASSWORD`/`MAIL_SECURE`) and adjust `MAIL_FROM`/`MAIL_FROM_NAME` once you are ready to deliver real emails; otherwise messages are logged locally in development.
+    - Update `DATABASE_URL` if you do not plan to use the Docker Postgres container.
+    - Tune auth token lifetimes with `JWT_ACCESS_TTL`, `JWT_REFRESH_TTL_MS`, `EMAIL_TOKEN_TTL_MS`, and `RESET_TOKEN_TTL_MS` (defaults cover most dev scenarios).
+    - Configure `APP_URL` so verification/reset links point to the right UI host and set the human-friendly sender info with `MAIL_FROM_NAME` + `MAIL_FROM_ADDRESS`.
+    - Choose your mail provider:
+       - Leave `EMAIL_PROVIDER` unset to keep the built-in Nodemailer transport that talks to the local MailHog SMTP relay (perfect for development).
+       - Set `EMAIL_PROVIDER=postmark` (with `POSTMARK_SERVER_TOKEN` and optional `POSTMARK_MESSAGE_STREAM`) to deliver production traffic through Postmark’s template API.
+    - When using MailHog/local SMTP, keep `MAIL_HOST`, `MAIL_PORT`, and `MAIL_SECURE` aligned with the docker-compose defaults (`mailhog`, `1025`, `false`). For real SMTP credentials you can still supply `MAIL_HOST`/`MAIL_PORT`/`MAIL_USER`/`MAIL_PASSWORD` if you prefer that path.
    - Add any provider credentials (Plaid/Flinks) when you integrate real APIs.
 
 3. **Generate Prisma client & run migrations** (requires Postgres running):
@@ -89,7 +92,7 @@ docker compose up --build
 
 - Frontend UI: `http://localhost:4200/`
 - Backend API: `http://localhost:3000/`
-- Postgres: `postgres://postgres:postgres@localhost:5432/multibank`
+- Postgres: `postgres://postgres:postgres@localhost:5433/finlo`
 The stack runs Prisma migrations and seeds a demo user (`demo-user`) with a checking account and a handful of transactions so the Transactions page mirrors the mock immediately.
 
 > **Quick command recap**
@@ -132,34 +135,44 @@ docker compose down
 
 ## Configure Real Email Delivery
 
-1. **Choose an SMTP provider (optional for production).** Any service that exposes SMTP credentials works (Gmail with an app password, Outlook 365, Mailgun, SendGrid, Amazon SES, etc.). Local development already uses the bundled MailHog instance, so you can skip this step until you are ready to deliver messages to real inboxes.
-2. **Update `backend/.env`.** Set `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASSWORD`, `MAIL_FROM`, and `MAIL_FROM_NAME` to match your provider (overriding the MailHog defaults). Leave `MAIL_URL` empty unless you prefer a single SMTP connection string. For STARTTLS providers (e.g., Gmail on port 587) keep `MAIL_SECURE="false"`; switch it to `"true"` for implicit TLS (port 465).
-3. **Restart the backend container** so it picks up the new credentials:
-   ```powershell
-   docker compose up -d --build backend
-   ```
-4. **Watch the logs** to confirm transport verification succeeds:
-   ```powershell
-   docker compose logs -f backend
-   ```
-   Look for `Mail transport verified (...)`. If verification fails, double-check host, port, and TLS settings.
-5. **Send yourself a test email** once the transport is verified:
-   ```powershell
-   npm --workspace backend run mail:test "you@example.com"
-   ```
-   The command exits silently on success; check your inbox (and spam folder) to ensure delivery.
+Local development keeps working out of the box: the backend falls back to Nodemailer + MailHog whenever `EMAIL_PROVIDER` is unset, and every message appears in the inbox at `http://localhost:8025/`. When you are ready to ship, switch to Postmark (recommended) or to your own SMTP provider.
 
-After these steps, signup, verification, and password reset flows deliver messages to real inboxes instead of the MailHog preview inbox.
+### Postmark (recommended for production)
 
-> 💡 **Gmail example:** generate an App Password under Google Account → Security → 2-Step Verification → App Passwords, then set:
-> ```
-> MAIL_HOST="smtp.gmail.com"
-> MAIL_PORT="587"
-> MAIL_USER="your-address@gmail.com"
-> MAIL_PASSWORD="the-app-password"
-> MAIL_SECURE="false"
-> ```
-> Restart the backend after updating `.env`, and future verification/reset emails will arrive in your Gmail inbox instead of the development preview log.
+1. **Create a Postmark server** and note the token from *Server → Credentials → Server API token*.
+2. **Add a sender signature or authenticated domain** so Postmark can deliver on your behalf (e.g., `mail.yourdomain.com`). Configure SPF + DKIM records as directed in Postmark.
+3. **Create two templates** using aliases the backend expects:
+   - `verify-email` – include `{{user_first_name}}` and `{{verify_url}}` placeholders.
+   - `reset-password` – include `{{user_first_name}}` and `{{reset_url}}` placeholders.
+   A minimal verification body looks like:
+   ```
+   Hi {{user_first_name}},
+
+   Please verify your email by clicking the link below:
+   {{verify_url}}
+
+   If you didn’t request this, please ignore this email.
+   ```
+4. **Update `backend/.env`:**
+   ```
+   EMAIL_PROVIDER=postmark
+   POSTMARK_SERVER_TOKEN=pmkt_xxx
+   POSTMARK_MESSAGE_STREAM=outbound  # optional, defaults to "outbound"
+   MAIL_FROM_NAME="Your App"
+   MAIL_FROM_ADDRESS="no-reply@mail.yourdomain.com"
+   ```
+   Leave the MailHog SMTP fields in place—if Postmark is unavailable the service still falls back to Nodemailer so you do not lose email visibility in development.
+5. **Restart the backend** (`docker compose up -d --build backend`) and check logs for `Postmark` send confirmations.
+
+### Staying on SMTP (Mailhog or another provider)
+
+Prefer to keep SMTP? Just leave `EMAIL_PROVIDER` unset. The backend will continue using Nodemailer transports, so configure `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASSWORD`, `MAIL_SECURE`, `MAIL_FROM_NAME`, and `MAIL_FROM_ADDRESS` exactly as before. The `mail:test` script remains useful for smoke tests:
+
+```powershell
+npm --workspace backend run mail:test "you@example.com"
+```
+
+If you switch away from MailHog, restart the backend and watch for `Mail transport verified ...` in the logs to confirm the new credentials are valid.
 
 ---
 
@@ -183,7 +196,7 @@ Wait for the backend logs to show `Mail transport verified (mailhog:1025)`.
 
 1. Visit `http://localhost:4200/` and open the Auth menu.
 2. Create a new account via **Sign up**. The frontend store persists the session and shows the top-bar badge once you land on the dashboard.
-3. Trigger **Verify email** – the backend logs a preview URL (copy/paste into your browser) so you can confirm the link works and the verification banner clears.
+3. Trigger **Verify email** – open the link from MailHog (it now targets `/verify?token=...&uid=...`) and confirm the new Angular verify screen marks the account as verified.
 4. Use **Forgot password** → **Reset password**; after submitting the reset form, the frontend displays a confirmation toast and clears the cached credentials.
 5. Refresh the page – the auth store rehydrates from storage and keeps you signed in if the session is still valid.
 
@@ -204,7 +217,7 @@ The command sends a message into MailHog; open the web UI to inspect the rendere
 Run your own instance, or quickly start one via Docker:
 
 ```powershell
-docker run --name multibank-db -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=multibank -d postgres:15
+docker run --name finlo-db -p 5433:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=finlo -d postgres:15
 ```
 
 Ensure `backend/.env` points to this database, then run the Prisma commands from the setup section.
@@ -270,7 +283,7 @@ All feature pages are wired to the shared store and API services; replace mocked
 ## Troubleshooting & Tips
 
 - **Missing Angular compiler:** run `npm install` (ensures `@angular/compiler-cli` is present) before building the frontend.
-- **New auth endpoints:** backend now exposes `/auth/signup`, `/auth/signin`, `/auth/refresh`, `/auth/verify`, `/auth/forgot`, `/auth/reset`, and session management via `/auth/sessions`. Use the tokens returned by sign-up/sign-in to call protected routes.
+- **New auth endpoints:** backend now exposes `/auth/signup`, `/auth/signin`, `/auth/refresh`, `/auth/verify`, `/auth/verify/resend`, `/auth/forgot`, `/auth/reset`, and session management via `/auth/sessions`. Use the tokens returned by sign-up/sign-in to call protected routes.
 - **Lint failures about unused parameters:** prefix intentionally unused arguments with `_` (the backend ESLint config treats `_arg` as an allowed unused name) or remove them altogether.
 - **Port already in use:** Vite will automatically pick the next available port; check terminal output for the actual URL.
 - **Backend cannot reach Postgres (`P1001`):** confirm the database container/service is running and that `DATABASE_URL` matches your setup.

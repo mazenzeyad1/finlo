@@ -6,18 +6,17 @@ export class ConnectionsController {
   constructor(private readonly svc: ConnectionsService) {}
 
   @Post('link/start')
-  start(@Body() body: { userId: string; provider: 'plaid' | 'flinks' }) {
-    return this.svc.startLink(body.userId, body.provider);
+  start(@Body() body: { userId: string }) {
+    return this.svc.startLink(body.userId);
   }
 
   @Post('link/exchange')
-  exchange(@Body() body: { userId: string; provider: 'plaid' | 'flinks'; publicToken: string }) {
-    return this.svc.exchangePublicToken(body.userId, body.provider, body.publicToken);
+  exchange(@Body() body: { userId: string; publicToken: string }) {
+    return this.svc.exchangePublicToken(body.userId, body.publicToken);
   }
 
   @Get()
   list(@Query('userId') userId: string) {
-    // Minimal list for scaffold
     return this.svc['prisma'].connection.findMany({ where: { userId } });
   }
 }

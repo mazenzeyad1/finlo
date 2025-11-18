@@ -1,4 +1,4 @@
-export type Provider = 'plaid' | 'flinks' | 'manual';
+export type Provider = 'flinks' | 'manual';
 
 export interface Institution { id: string; name: string; logoUrl?: string; provider: Provider; }
 export interface Connection { id: string; institutionId: string; status: 'active'|'error'|'revoked'; linkedAt: string; }

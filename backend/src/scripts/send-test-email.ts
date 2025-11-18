@@ -23,10 +23,10 @@ async function bootstrap() {
   }
 
   const subject = 'Finance dashboard mailer test';
-  const text = 'This is a verification email sent by the Multibank backend. Credentials are working.';
+  const text = 'This is a verification email sent by the Finlo backend. Credentials are working.';
   const html = `<p>${text}</p>`;
 
-  await mailer.send({ to: recipient, subject, text, html });
+  await mailer.sendBasic(recipient, subject, html, text);
   await app.close();
 }
 

@@ -1,5 +1,6 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, signal } from '@angular/core';
 import { CommonModule, NgFor, NgIf } from '@angular/common';
+import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { ConnectionApi } from '../api/connection.api';
 import { InstitutionBadgeComponent } from '../../shared/components/institution-badge.component';
 
@@ -15,10 +16,25 @@ import { InstitutionBadgeComponent } from '../../shared/components/institution-b
           <p class="helper-text">Manage your linked banks and monitor sync status.</p>
         </div>
         <div class="actions">
-          <button class="btn" (click)="start('plaid')">Link New Bank</button>
-          <button class="btn secondary" (click)="start('flinks')">Link via Flinks</button>
+          <button class="btn" (click)="start()" [disabled]="isLinking()">
+            {{ isLinking() ? 'Opening Flinks...' : 'Link Bank (Flinks)' }}
+          </button>
         </div>
       </header>
+
+      <!-- Flinks Connect Modal -->
+      <div class="flinks-modal" *ngIf="flinksUrl()" (click)="closeFlinks()">
+        <div class="flinks-modal-content" (click)="$event.stopPropagation()">
+          <div class="flinks-modal-header">
+            <h3>Connect Your Bank</h3>
+            <button class="close-btn" (click)="closeFlinks()">&times;</button>
+          </div>
+          <iframe [src]="flinksUrl()" class="flinks-iframe"></iframe>
+          <div class="flinks-sandbox-hint">
+            <strong>Sandbox Mode:</strong> Use institution "FlinksCapital", username & password: "Greatday"
+          </div>
+        </div>
+      </div>
 
       <div class="card table-card" *ngIf="connections.length; else emptyState">
         <table>
@@ -49,27 +65,146 @@ import { InstitutionBadgeComponent } from '../../shared/components/institution-b
         <div class="card" style="text-align:center; padding:2.5rem 1.5rem;">
           <h3 style="margin-bottom:0.5rem">No institutions yet</h3>
           <p class="muted" style="margin-bottom:1.25rem">Connect your first bank to start aggregating balances and transactions.</p>
-          <button class="btn" (click)="start('plaid')">Get Started</button>
+          <button class="btn" (click)="start()">Get Started</button>
         </div>
       </ng-template>
     </section>
-  `
+  `,
+  styles: [`
+    .flinks-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.7);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+    .flinks-modal-content {
+      background: white;
+      border-radius: 8px;
+      width: 90%;
+      max-width: 600px;
+      height: 80vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    .flinks-modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .flinks-modal-header h3 {
+      margin: 0;
+      font-size: 1.25rem;
+    }
+    .close-btn {
+      background: none;
+      border: none;
+      font-size: 2rem;
+      cursor: pointer;
+      color: #6b7280;
+      line-height: 1;
+      padding: 0;
+    }
+    .close-btn:hover {
+      color: #111827;
+    }
+    .flinks-iframe {
+      flex: 1;
+      border: none;
+      width: 100%;
+    }
+    .flinks-sandbox-hint {
+      padding: 0.75rem 1.5rem;
+      background: #fef3c7;
+      border-top: 1px solid #fbbf24;
+      font-size: 0.875rem;
+      color: #92400e;
+    }
+  `]
 })
 export class ConnectionsPage {
   private api = inject(ConnectionApi);
+  private sanitizer = inject(DomSanitizer);
+  
   userId = 'demo-user';
   connections: any[] = [];
+  isLinking = signal(false);
+  flinksUrl = signal<SafeResourceUrl | null>(null);
 
-  ngOnInit(){ this.refresh(); }
-  async start(provider: 'plaid'|'flinks'){
-    await this.api.startLink({ userId: this.userId, provider }).toPromise();
-    await this.api.exchange({ userId: this.userId, provider, publicToken: 'public-token-demo' }).toPromise();
-    await this.refresh();
+  ngOnInit() {
+    this.refresh();
+    // Listen for messages from Flinks iframe
+    window.addEventListener('message', this.handleFlinksMessage.bind(this));
   }
-  async refresh(){ this.connections = await this.api.list(this.userId).toPromise() || []; }
-  logoFor(instId: string){ return `/assets/logos/${instId}.svg`; }
-  statusClass(status: string){
+
+  ngOnDestroy() {
+    window.removeEventListener('message', this.handleFlinksMessage.bind(this));
+  }
+
+  async start() {
+    if (this.isLinking()) return;
+    
+    this.isLinking.set(true);
+    try {
+      const response = await this.api.startLink({ userId: this.userId }).toPromise();
+      if (response?.linkToken) {
+        // Open Flinks Connect in iframe
+        const url = this.sanitizer.bypassSecurityTrustResourceUrl(response.linkToken);
+        this.flinksUrl.set(url);
+      }
+    } catch (err) {
+      console.error('Failed to start Flinks link', err);
+      alert('Failed to open Flinks connection. Check console for details.');
+    } finally {
+      this.isLinking.set(false);
+    }
+  }
+
+  closeFlinks() {
+    this.flinksUrl.set(null);
+  }
+
+  private async handleFlinksMessage(event: MessageEvent) {
+    // Flinks sends messages when user completes the flow
+    // Check origin for security in production
+    if (event.data?.step === 'REDIRECT' || event.data?.loginId) {
+      const loginId = event.data.loginId || event.data.requestId;
+      
+      if (loginId) {
+        console.log('Flinks login completed:', loginId);
+        
+        try {
+          await this.api.exchange({ userId: this.userId, publicToken: loginId }).toPromise();
+          await this.refresh();
+          this.closeFlinks();
+          alert('Bank connected successfully!');
+        } catch (err) {
+          console.error('Failed to exchange Flinks token', err);
+          alert('Failed to complete connection. Please try again.');
+        }
+      }
+    }
+  }
+
+  async refresh() {
+    this.connections = await this.api.list(this.userId).toPromise() || [];
+  }
+
+  logoFor(instId: string) {
+    return `/assets/logos/${instId}.svg`;
+  }
+
+  statusClass(status: string) {
     switch ((status || '').toLowerCase()) {
+      case 'active':
       case 'connected':
         return 'connected';
       case 'pending':
@@ -82,8 +217,9 @@ export class ConnectionsPage {
         return '';
     }
   }
-  formatStatus(status: string){
-    if (!status) { return 'Unknown'; }
+
+  formatStatus(status: string) {
+    if (!status) return 'Unknown';
     return status.charAt(0).toUpperCase() + status.slice(1);
   }
 }

@@ -25,9 +25,15 @@ describe('AuthController throttling', () => {
   });
 
   it('limits verification link submissions', () => {
-    const { limit, ttl } = getThrottle('verifyFromLink', 'verify-email');
-    expect(limit).toBe(5);
-    expect(ttl).toBe(300);
+    const { limit, ttl } = getThrottle('verify', 'verify');
+    expect(limit).toBe(1);
+    expect(ttl).toBe(60);
+  });
+
+  it('limits verification resend attempts', () => {
+    const { limit, ttl } = getThrottle('resend', 'verify-resend');
+    expect(limit).toBe(1);
+    expect(ttl).toBe(60);
   });
 
   it('limits forgot password flow', () => {

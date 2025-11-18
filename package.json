@@ -1,5 +1,5 @@
 {
-  "name": "multibank-monorepo",
+  "name": "finlo-monorepo",
   "private": true,
   "workspaces": ["backend", "frontend"],
   "scripts": {

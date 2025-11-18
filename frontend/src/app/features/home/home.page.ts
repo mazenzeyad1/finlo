@@ -9,7 +9,7 @@ import { AuthStore } from '../../state/auth.store';
   template: `
     <section class="landing">
       <header>
-        <p class="eyebrow">Multi-bank finance dashboard</p>
+        <p class="eyebrow">Personal finance dashboard</p>
         <h1>Sign in to continue</h1>
         <p class="tagline">Connect all of your financial institutions, monitor balances, and stay ahead of cash flow.</p>
       </header>
