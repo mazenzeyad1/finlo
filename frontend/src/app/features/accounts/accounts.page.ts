@@ -63,15 +63,9 @@ export class AccountsPage {
 
   async linkBank(){
     if (this.isLinking) { return; }
-    this.isLinking = true;
-    try {
-      await firstValueFrom(this.connectionApi.startLink({ userId: this.userId, provider: 'plaid' }));
-      await firstValueFrom(this.connectionApi.exchange({ userId: this.userId, provider: 'plaid', publicToken: 'public-token-demo' }));
-  await this.loadAccounts();
-    } catch (err) {
-      console.error('Failed to link bank', err);
-    } finally {
-      this.isLinking = false;
-    }
+    
+    // Redirect to connections page for proper Flinks integration
+    alert('Please use the Connections page to link a new bank with Flinks.');
+    // Or implement the same iframe modal here if needed
   }
 }

@@ -6,10 +6,10 @@ import { Connection } from '../../shared/models/types';
 @Injectable({ providedIn: 'root' })
 export class ConnectionApi {
   constructor(private http: HttpClient) {}
-  startLink(body: { userId: string; provider: 'plaid'|'flinks' }) {
+  startLink(body: { userId: string }) {
     return this.http.post<{ linkToken: string }>('connections/link/start', body);
   }
-  exchange(body: { userId: string; provider: 'plaid'|'flinks'; publicToken: string }) {
+  exchange(body: { userId: string; publicToken: string }) {
     return this.http.post<{ connectionId: string }>('connections/link/exchange', body);
   }
   list(userId: string): Observable<Connection[]> {

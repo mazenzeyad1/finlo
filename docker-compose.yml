@@ -4,9 +4,9 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: multibank
+      POSTGRES_DB: finlo
     ports:
-      - "55529:5432"
+      - "5433:5432"
     volumes:
       - dbdata:/var/lib/postgresql/data
 
@@ -15,7 +15,7 @@ services:
     env_file:
       - ./backend/.env
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@db:5432/multibank?schema=public
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/finlo?schema=public
       JWT_SECRET: ${JWT_SECRET:-dev-secret}
       PORT: 3000
     depends_on:

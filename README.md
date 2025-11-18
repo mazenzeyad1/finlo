@@ -1,6 +1,6 @@
-# Clean Architecture Multi‑Bank Finance App
+# Finlo - Personal Finance App
 
-A full-stack scaffold for a finance dashboard that aggregates multiple bank connections.
+A full-stack application for managing your personal finances and bank connections.
 
 - **Backend:** NestJS 10, Prisma 5, PostgreSQL, Ports & Adapters architecture with provider stubs for Plaid/Flinks.
 - **Frontend:** Angular 18 (standalone components) compiled by Vite 5 with `@analogjs/vite-plugin-angular`.
@@ -92,7 +92,7 @@ docker compose up --build
 
 - Frontend UI: `http://localhost:4200/`
 - Backend API: `http://localhost:3000/`
-- Postgres: `postgres://postgres:postgres@localhost:5432/multibank`
+- Postgres: `postgres://postgres:postgres@localhost:5433/finlo`
 The stack runs Prisma migrations and seeds a demo user (`demo-user`) with a checking account and a handful of transactions so the Transactions page mirrors the mock immediately.
 
 > **Quick command recap**
@@ -217,7 +217,7 @@ The command sends a message into MailHog; open the web UI to inspect the rendere
 Run your own instance, or quickly start one via Docker:
 
 ```powershell
-docker run --name multibank-db -p 5432:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=multibank -d postgres:15
+docker run --name finlo-db -p 5433:5432 -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=finlo -d postgres:15
 ```
 
 Ensure `backend/.env` points to this database, then run the Prisma commands from the setup section.

@@ -20,8 +20,8 @@ interface AuthSession {
 
 @Injectable({ providedIn: 'root' })
 export class AuthStore {
-  private readonly sessionKey = 'multibank.auth.session';
-  private readonly noticeKey = 'multibank.auth.notice';
+  private readonly sessionKey = 'finlo.auth.session';
+  private readonly noticeKey = 'finlo.auth.notice';
 
   private readonly sessionSignal = signal<AuthSession | null>(null);
   postResetNotice = signal<string | null>(null);

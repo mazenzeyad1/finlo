@@ -3,7 +3,7 @@ import { Router, RouterLink, RouterOutlet, RouterLinkActive } from '@angular/rou
 import { CommonModule, NgFor } from '@angular/common';
 import { toObservable } from '@angular/core/rxjs-interop';
 import { distinctUntilChanged, filter, map, switchMap, takeUntil, tap } from 'rxjs/operators';
-import { Subject } from 'rxjs';
+import { Subject, interval } from 'rxjs';
 import { AccountApi } from './features/api/account.api';
 import { AuthApi } from './features/api/auth.api';
 import { AppStore } from './state/app.store';
@@ -19,7 +19,7 @@ import { AuthStore } from './state/auth.store';
       <aside class="layout-sidebar">
         <div class="sidebar-brand">
           <span>Financial Dashboard</span>
-          <strong>Multi-Bank</strong>
+          <strong>Finlo</strong>
         </div>
         <nav class="nav-list">
           <a routerLink="/dashboard" routerLinkActive="active" [routerLinkActiveOptions]="{ exact: true }" class="nav-item">Dashboard</a>
@@ -45,8 +45,8 @@ import { AuthStore } from './state/auth.store';
           <div class="user-card">
             <div class="user-meta">
               <p class="muted">Hello, {{ greetingName() }}</p>
-              <span class="status" [class.verified]="auth.emailVerified()">
-                {{ auth.emailVerified() ? 'Email verified' : 'Verify your email to unlock more features' }}
+              <span class="status" *ngIf="!auth.emailVerified()">
+                Verify your email to unlock more features
               </span>
               <p class="status-message" *ngIf="resendMessage()">{{ resendMessage() }}</p>
               <div class="auth-actions">
@@ -111,6 +111,42 @@ export class AppComponent implements OnInit, OnDestroy {
         takeUntil(this.destroy$)
       )
       .subscribe(xs => this.store.setAccounts(xs));
+
+    // Refresh user data immediately on load if authenticated
+    if (this.auth.isAuthenticated()) {
+      this.authApi.me()
+        .pipe(takeUntil(this.destroy$))
+        .subscribe({
+          next: (user) => {
+            const tokens = this.auth.tokens();
+            if (tokens) {
+              this.auth.setSession(user, tokens);
+            }
+          },
+          error: () => {
+            // Ignore refresh errors
+          },
+        });
+    }
+
+    // Poll for verification status every 10s when user is unverified
+    interval(10000)
+      .pipe(
+        filter(() => this.auth.isAuthenticated() && !this.auth.emailVerified()),
+        switchMap(() => this.authApi.me()),
+        takeUntil(this.destroy$)
+      )
+      .subscribe({
+        next: (user) => {
+          const tokens = this.auth.tokens();
+          if (tokens) {
+            this.auth.setSession(user, tokens);
+          }
+        },
+        error: () => {
+          // Ignore polling errors
+        },
+      });
   }
 
   ngOnDestroy(){
