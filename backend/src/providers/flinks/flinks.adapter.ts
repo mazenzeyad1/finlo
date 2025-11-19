@@ -12,6 +12,13 @@ interface FlinksAccountsResponse {
     Balance?: {
       Current?: number;
     };
+    Transactions?: Array<{
+      Id?: string;
+      Date?: string;
+      Description?: string;
+      Debit?: number;
+      Credit?: number;
+    }>;
   }>;
 }
 
@@ -26,50 +33,69 @@ export class FlinksAdapter implements BankDataProvider {
   private readonly logger = new Logger(FlinksAdapter.name);
   private readonly baseUrl: string;
   private readonly isSandbox: boolean;
+  private readonly connectUrl: string;
 
   constructor(private config: ConfigService) {
     // Flinks sandbox/toolbox endpoint (no credentials needed)
     this.baseUrl = this.config.get<string>('FLINKS_BASE_URL', 'https://toolbox-api.private.fin.ag/v3');
     this.isSandbox = this.config.get<string>('FLINKS_MODE', 'sandbox') === 'sandbox';
     
+    // Your account-specific connect URL from Flinks dashboard
+    this.connectUrl = this.config.get<string>('FLINKS_CONNECT_URL');
+    if (!this.connectUrl) {
+      this.logger.warn('FLINKS_CONNECT_URL is not set – frontend will not be able to show Connect iframe');
+    }
+    
     if (this.isSandbox) {
       this.logger.log('Flinks adapter running in sandbox/toolbox mode');
     }
   }
 
+  /**
+   * For Flinks, "getLinkToken" just means:
+   * return the Connect URL the frontend should embed in an iframe.
+   */
   async getLinkToken(_userId: string) {
-    // In Flinks, the frontend connects directly via iframe/redirect
-    // Return the Connect URL for the frontend to embed
-    const connectUrl = this.config.get<string>(
-      'FLINKS_CONNECT_URL',
-      'https://toolbox.flinks.com/v3'
-    );
-    
     return { 
-      linkToken: connectUrl,
-      // In toolbox mode, you can use demo institution credentials
+      linkToken: this.connectUrl,
       sandboxInfo: this.isSandbox ? {
         institution: 'FlinksCapital',
         username: 'Greatday',
-        password: 'Greatday'
+        password: 'Everyday'
       } : undefined
     };
   }
 
-  async exchangePublicToken(loginId: string) {
-    // loginId is the LoginId returned from Flinks Connect flow
+  /**
+   * In Flinks, what was previously called "publicToken" is actually LoginId.
+   * This method exchanges the LoginId for institution info and stores it.
+   */
+  async exchangeLoginId(loginId: string) {
     try {
-      const response = await fetch(`${this.baseUrl}/AccountsSummary`, {
+      const url = `${this.baseUrl}/AccountsSummary`;
+      const payload = {
+        LoginId: loginId,
+        RequestId: `req-${Date.now()}`,
+        MostRecentCached: true
+      };
+
+      this.logger.debug(`Calling Flinks API: ${url}`);
+      this.logger.debug(`Flinks /AccountsSummary payload: ${JSON.stringify(payload)}`);
+
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ LoginId: loginId })
+        body: JSON.stringify(payload)
       });
 
+      const text = await response.text();
+      this.logger.debug(`Flinks /AccountsSummary status=${response.status} body=${text}`);
+      
       if (!response.ok) {
         throw new Error(`Flinks API error: ${response.status}`);
       }
 
-      const data: FlinksLoginResponse = await response.json();
+      const data: FlinksLoginResponse = JSON.parse(text || '{}');
       const institutionName = data.Institution || 'Unknown Institution';
       const institutionId = `flinks:${institutionName.toLowerCase().replace(/\s+/g, '-')}`;
 

@@ -1,0 +1,29 @@
+<button
+  class="flinks-btn"
+  [disabled]="isLoading"
+  (click)="open()"
+>
+  {{ isLoading ? 'Please wait…' : 'Connect Bank' }}
+</button>
+
+<div class="overlay" *ngIf="isOpen">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Connect your bank</h3>
+      <button class="close" (click)="close()" aria-label="Close">×</button>
+    </div>
+
+    <div class="modal-body">
+      <iframe
+        *ngIf="sanitizedConnectUrl"
+        class="flinksconnect"
+        [src]="sanitizedConnectUrl"
+        width="100%"
+        style="border: none"
+      ></iframe>
+
+      <div class="status" *ngIf="isLoading">Syncing your accounts…</div>
+      <div class="error" *ngIf="errorMessage">{{ errorMessage }}</div>
+    </div>
+  </div>
+</div>

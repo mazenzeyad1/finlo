@@ -12,7 +12,7 @@ export class CurrencySymbolPipe implements PipeTransform {
   selector: 'ui-money',
   standalone: true,
   imports: [CommonModule, CurrencySymbolPipe],
-  template: `{{ amount | number:'1.2-2' }} {{ currency | currencySymbol }}`,
+  templateUrl: './money.component.html',
 })
 export class MoneyComponent {
   @Input() amount = 0;

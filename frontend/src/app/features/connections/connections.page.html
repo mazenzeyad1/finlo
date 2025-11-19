@@ -1,0 +1,44 @@
+<section class="page">
+  <header class="section-heading">
+    <div>
+      <h2>Connected Institutions</h2>
+      <p class="helper-text">Manage your linked banks and monitor sync status.</p>
+    </div>
+    <div class="actions">
+      <flinks-connect-button [userId]="userId" (connected)="onConnected()"></flinks-connect-button>
+    </div>
+  </header>
+
+  <div class="card table-card" *ngIf="connections.length; else emptyState">
+    <table>
+      <thead>
+        <tr>
+          <th>Institution</th>
+          <th>Status</th>
+          <th>Last Synced</th>
+          <th>Accounts</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let c of connections">
+          <td>
+            <ui-institution-badge [name]="c.institutionId" [logoUrl]="logoFor(c.institutionId)"></ui-institution-badge>
+          </td>
+          <td>
+            <span class="status-pill {{ statusClass(c.status) }}">{{ formatStatus(c.status) }}</span>
+          </td>
+          <td>{{ c.linkedAt | date:'mediumDate' }}</td>
+          <td>{{ c.accountCount || 0 }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <ng-template #emptyState>
+    <div class="card" style="text-align:center; padding:2.5rem 1.5rem;">
+      <h3 style="margin-bottom:0.5rem">No institutions yet</h3>
+      <p class="muted" style="margin-bottom:1.25rem">Connect your first bank to start aggregating balances and transactions.</p>
+      <flinks-connect-button [userId]="userId" (connected)="onConnected()"></flinks-connect-button>
+    </div>
+  </ng-template>
+</section>

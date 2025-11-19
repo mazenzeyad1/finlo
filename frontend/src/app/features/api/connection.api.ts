@@ -9,7 +9,7 @@ export class ConnectionApi {
   startLink(body: { userId: string }) {
     return this.http.post<{ linkToken: string }>('connections/link/start', body);
   }
-  exchange(body: { userId: string; publicToken: string }) {
+  exchange(body: { userId: string; loginId: string }) {
     return this.http.post<{ connectionId: string }>('connections/link/exchange', body);
   }
   list(userId: string): Observable<Connection[]> {
