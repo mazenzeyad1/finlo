@@ -2,7 +2,7 @@ import { Component, EventEmitter, Input, OnDestroy, OnInit, Output } from '@angu
 import { CommonModule } from '@angular/common';
 import { DomSanitizer, SafeResourceUrl } from '@angular/platform-browser';
 import { HttpClient, HttpClientModule } from '@angular/common/http';
-import { environment } from 'environments/environment';
+import { environment } from '../../../environments/environment';
 
 interface FlinksMessage {
   LoginId?: string;

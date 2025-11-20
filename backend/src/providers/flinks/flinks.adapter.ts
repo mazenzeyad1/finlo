@@ -34,11 +34,19 @@ export class FlinksAdapter implements BankDataProvider {
   private readonly baseUrl: string;
   private readonly isSandbox: boolean;
   private readonly connectUrl: string;
+  private readonly customerId: string;
+  private readonly bearerToken: string;
+  private readonly authKey: string;
+  private readonly apiKey: string;
 
   constructor(private config: ConfigService) {
-    // Flinks sandbox/toolbox endpoint (no credentials needed)
+    // Flinks sandbox/toolbox endpoint
     this.baseUrl = this.config.get<string>('FLINKS_BASE_URL', 'https://toolbox-api.private.fin.ag/v3');
     this.isSandbox = this.config.get<string>('FLINKS_MODE', 'sandbox') === 'sandbox';
+    this.customerId = this.config.get<string>('FLINKS_CUSTOMER_ID', '');
+    this.bearerToken = this.config.get<string>('FLINKS_BEARER_TOKEN', '');
+    this.authKey = this.config.get<string>('FLINKS_AUTH_KEY', '');
+    this.apiKey = this.config.get<string>('FLINKS_API_KEY', '');
     
     // Your account-specific connect URL from Flinks dashboard
     this.connectUrl = this.config.get<string>('FLINKS_CONNECT_URL');
@@ -82,9 +90,20 @@ export class FlinksAdapter implements BankDataProvider {
       this.logger.debug(`Calling Flinks API: ${url}`);
       this.logger.debug(`Flinks /AccountsSummary payload: ${JSON.stringify(payload)}`);
 
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      
+      if (this.bearerToken) {
+        headers['Authorization'] = `Bearer ${this.bearerToken}`;
+      }
+      if (this.apiKey) {
+        headers['x-api-key'] = this.apiKey;
+      }
+
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(payload)
       });
 
@@ -114,9 +133,20 @@ export class FlinksAdapter implements BankDataProvider {
 
   async fetchAccounts(loginId: string) {
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      
+      if (this.bearerToken) {
+        headers['Authorization'] = `Bearer ${this.bearerToken}`;
+      }
+      if (this.apiKey) {
+        headers['x-api-key'] = this.apiKey;
+      }
+
       const response = await fetch(`${this.baseUrl}/AccountsDetail`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           LoginId: loginId,
           RequestId: `req-${Date.now()}`
@@ -149,9 +179,20 @@ export class FlinksAdapter implements BankDataProvider {
 
   async fetchTransactions(loginId: string, opts: { since?: string; cursor?: string }) {
     try {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      
+      if (this.bearerToken) {
+        headers['Authorization'] = `Bearer ${this.bearerToken}`;
+      }
+      if (this.apiKey) {
+        headers['x-api-key'] = this.apiKey;
+      }
+
       const response = await fetch(`${this.baseUrl}/AccountsDetail`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           LoginId: loginId,
           RequestId: `req-${Date.now()}`,
