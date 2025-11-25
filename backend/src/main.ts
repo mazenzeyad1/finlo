@@ -9,6 +9,9 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const config = app.get(ConfigService);
 
+  // Enable debug logs so we can see Flinks payload/response details
+  app.useLogger(['log', 'error', 'warn', 'debug']);
+
   const frontendUrl = config.get<string>('APP_URL') ?? 'http://localhost:4200';
   const corsOrigins = config.get<string>('CORS_ORIGINS');
   const originList = (corsOrigins ? corsOrigins.split(',') : [])

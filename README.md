@@ -48,59 +48,165 @@ A full-stack personal finance application for managing bank connections, trackin
 
 ```
 finlo/
-├─ backend/
+├─ backend/                                          NestJS backend application
 │  ├─ src/
-│  │  ├─ auth/                 JWT authentication, email verification
-│  │  │  ├─ auth.controller.ts  Registration, login, verification endpoints
-│  │  │  ├─ auth.service.ts     Business logic, token generation, email sending
-│  │  │  ├─ jwt.strategy.ts     Passport JWT strategy
-│  │  │  └─ dto/                Request/response DTOs
-│  │  ├─ accounts/              Account management (CRUD)
-│  │  ├─ transactions/          Transaction history queries with filters
-│  │  ├─ connections/           Bank linking via Flinks
-│  │  ├─ budgets/               Budget tracking
-│  │  ├─ rules/                 Transaction categorization rules
-│  │  ├─ common/                Shared services
-│  │  │  ├─ prisma.service.ts   Database connection
-│  │  │  └─ mailer.service.ts   Email sending (Brevo SMTP)
-│  │  ├─ providers/
-│  │  │  ├─ flinks/             Flinks API adapter
-│  │  │  └─ ports/              Provider interface definitions
-│  │  ├─ observability/         Logging interceptor
-│  │  └─ webhooks/              Flinks webhook handlers
+│  │  ├─ auth/                                       JWT authentication & email verification
+│  │  │  ├─ auth.controller.ts                       Endpoints: register, signin, verify, forgot, reset
+│  │  │  ├─ auth.service.ts                          Business logic: token generation, email sending
+│  │  │  ├─ jwt.strategy.ts                          Passport JWT strategy for protected routes
+│  │  │  ├─ jwt-auth.guard.ts                        Guard to protect routes with @UseGuards(JwtAuthGuard)
+│  │  │  └─ dto/                                     Request/response DTOs (validation)
+│  │  ├─ accounts/                                   Account management CRUD
+│  │  │  ├─ accounts.controller.ts                   GET /api/accounts - list user accounts
+│  │  │  └─ accounts.service.ts                      Database queries for accounts
+│  │  ├─ transactions/                               Transaction history queries
+│  │  │  ├─ transactions.controller.ts               GET /api/transactions - paginated list
+│  │  │  └─ transactions.service.ts                  Filters, search, pagination
+│  │  ├─ connections/                                Bank connection management
+│  │  │  ├─ connections.controller.ts                POST /link/start, POST /link/exchange
+│  │  │  └─ connections.service.ts                   Orchestrates provider calls, DB writes
+│  │  ├─ budgets/                                    Budget tracking CRUD
+│  │  ├─ rules/                                      Transaction categorization rules
+│  │  ├─ common/                                     Shared services
+│  │  │  ├─ prisma.service.ts                        Database connection lifecycle
+│  │  │  └─ mailer.service.ts                        SMTP email sending (Brevo/MailHog)
+│  │  ├─ providers/                                  Banking data provider abstraction
+│  │  │  ├─ flinks/
+│  │  │  │  └─ flinks.adapter.ts                     Flinks API integration (accounts, transactions)
+│  │  │  └─ ports/
+│  │  │     └─ bank-data.provider.ts                 Interface all providers must implement
+│  │  ├─ observability/
+│  │  │  └─ logger.interceptor.ts                    HTTP request/response logging
+│  │  └─ webhooks/
+│  │     └─ webhooks.controller.ts                   POST /webhooks/flinks - handle Flinks events
 │  └─ prisma/
-│     ├─ schema.prisma          Data model (User, Account, Transaction, EmailToken, etc.)
-│     ├─ migrations/            Database migrations
-│     └─ seed.ts                Demo data seeding (demo@finlo.local)
-├─ frontend/
+│     ├─ schema.prisma                               Data model: User, Account, Transaction, etc.
+│     ├─ migrations/                                 Database schema versions
+│     └─ seed.ts                                     Demo user: demo@finlo.local
+│
+├─ frontend/                                         Angular 18 frontend (standalone components)
 │  ├─ src/app/
-│  │  ├─ app.component.ts       Root layout with sidebar + header
-│  │  ├─ features/
-│  │  │  ├─ auth/               Sign in, sign up, verify, forgot/reset password pages
-│  │  │  ├─ dashboard/          KPIs and account overview
-│  │  │  ├─ accounts/           Account list and details
-│  │  │  ├─ transactions/       Transaction history with filters
-│  │  │  ├─ connections/        Bank linking UI with Flinks iframe modal
-│  │  │  ├─ budgets/            Budget management
-│  │  │  └─ api/                HTTP service layer (AuthApi, AccountApi, etc.)
-│  │  ├─ shared/
-│  │  │  ├─ components/         Reusable UI components
-│  │  │  │  ├─ verification-banner.component.ts  Email verification prompt
-│  │  │  │  └─ money.component.ts                Currency display
-│  │  │  └─ models/             TypeScript interfaces
-│  │  └─ state/                 Signal-based stores
-│  │     ├─ auth.store.ts       Authentication state (localStorage: finlo.auth.session)
-│  │     └─ app.store.ts        App-level state (accounts, selected account)
-│  └─ src/styles.css            Global styles and design tokens
-├─ docker-compose.yml           Multi-container orchestration
-│  ├─ db (PostgreSQL 16)        Port 5433, database: finlo
-│  ├─ backend (NestJS)          Port 3000, runs migrations + seed on startup
-│  ├─ frontend (Angular/Vite)   Port 4200
-│  └─ mailhog                   Port 8025 (UI), 1025 (SMTP)
-├─ package.json                 Workspace root scripts
-├─ EMAIL_SETUP.md               SMTP configuration guide (Gmail, SendGrid, Brevo)
-└─ FLINKS_INTEGRATION.md        Flinks setup instructions
+│  │  ├─ app.component.ts                            Root layout: sidebar + header + router-outlet
+│  │  ├─ app.routes.ts                               Route definitions with lazy loading
+│  │  ├─ features/                                   Feature modules (pages)
+│  │  │  ├─ auth/                                    Authentication pages
+│  │  │  │  ├─ signin.page.ts                        Login form
+│  │  │  │  ├─ signup.page.ts                        Registration form
+│  │  │  │  ├─ verify.page.ts                        Email verification landing page
+│  │  │  │  ├─ forgot-password.page.ts               Request reset email
+│  │  │  │  └─ reset-password.page.ts                Set new password with token
+│  │  │  ├─ dashboard/                               Overview with KPIs
+│  │  │  │  └─ dashboard.page.ts                     Total balance, recent transactions
+│  │  │  ├─ accounts/                                Account management
+│  │  │  │  └─ accounts.page.ts                      List all linked accounts
+│  │  │  ├─ transactions/                            Transaction history
+│  │  │  │  └─ transactions.page.ts                  List with search, filters, pagination
+│  │  │  ├─ connections/                             Bank linking UI
+│  │  │  │  └─ connections.page.ts                   Shows connections, opens Flinks modal
+│  │  │  ├─ budgets/                                 Budget management
+│  │  │  └─ api/                                     HTTP service layer
+│  │  │     ├─ auth.api.ts                           AuthApi: signin, signup, verify, etc.
+│  │  │     ├─ account.api.ts                        AccountApi: list accounts
+│  │  │     ├─ transaction.api.ts                    TransactionApi: list transactions
+│  │  │     └─ connection.api.ts                     ConnectionApi: startLink, exchange
+│  │  ├─ shared/                                     Reusable components & models
+│  │  │  ├─ components/
+│  │  │  │  ├─ verification-banner.component.ts      Email verification prompt (auto-refresh)
+│  │  │  │  ├─ flinks-connect-button.component.ts    Flinks iframe modal (postMessage handler)
+│  │  │  │  └─ money.component.ts                    Currency display component
+│  │  │  └─ models/
+│  │  │     └─ types.ts                              TypeScript interfaces (User, Account, etc.)
+│  │  ├─ state/                                      Signal-based stores (no NgRx)
+│  │  │  ├─ auth.store.ts                            Authentication state (localStorage sync)
+│  │  │  └─ app.store.ts                             App-level state (accounts, selected account)
+│  │  └─ environments/
+│  │     └─ environment.ts                           Config: FLINKS_CONNECT_URL (iframe URL)
+│  └─ src/styles.css                                 Global CSS: design tokens, dark theme
+│
+├─ docker-compose.yml                                Multi-container orchestration
+│  ├─ db                                             PostgreSQL 16 (port 5433)
+│  ├─ backend                                        NestJS (port 3000, runs migrations on start)
+│  ├─ frontend                                       Angular/Vite (port 4200)
+│  └─ mailhog                                        Email testing (UI: 8025, SMTP: 1025)
+│
+├─ package.json                                      Workspace root: dev, build scripts
+├─ EMAIL_SETUP.md                                    SMTP configuration guide
+└─ FLINKS_INTEGRATION.md                             Flinks API setup instructions
 ```
+
+## 🔍 Key File Descriptions
+
+### Backend Core Files
+
+**`backend/src/main.ts`**
+- Application entry point
+- Configures CORS, global validation pipes, Swagger docs
+- Starts NestJS server on port 3000
+
+**`backend/src/app.module.ts`**
+- Root module that imports all feature modules
+- Configures Prisma, JWT, ConfigModule
+
+**`backend/src/common/prisma.service.ts`**
+- Manages PostgreSQL connection via Prisma Client
+- Handles connection lifecycle (onModuleInit, onModuleDestroy)
+
+**`backend/src/common/mailer.service.ts`**
+- Sends emails via SMTP (Brevo in production, MailHog in dev)
+- Used for verification emails, password resets
+
+**`backend/src/providers/flinks/flinks.adapter.ts`**
+- **Purpose:** Integrate with Flinks API for bank data
+- **Key Methods:**
+  - `getLinkToken()` - Returns iframe URL for frontend
+  - `exchangeLoginId()` - Exchanges LoginId for institution data
+  - `fetchAccounts()` - Retrieves account balances
+  - `fetchTransactions()` - Retrieves transaction history
+- **Environment:** Uses FLINKS_* env vars from backend/.env
+
+### Frontend Core Files
+
+**`frontend/src/app/app.component.ts`**
+- Root component with sidebar, header, verification banner
+- Handles user authentication state and navigation
+
+**`frontend/src/environments/environment.ts`**
+- **Purpose:** Configuration for frontend
+- **Key Values:**
+  - `FLINKS_CONNECT_URL` - Hardcoded Flinks iframe URL (`https://toolbox-iframe.private.fin.ag/v2/?demo=true`)
+  - `FLINKS_ORIGIN` - Expected origin for postMessage validation
+
+**`frontend/src/app/shared/components/flinks-connect-button.component.ts`**
+- **Purpose:** Flinks Connect modal with iframe
+- **Flow:**
+  1. Opens modal with iframe (URL from environment.ts)
+  2. Listens for postMessage from Flinks iframe
+  3. Receives LoginId after user authenticates
+  4. Sends LoginId to backend via `/api/connections/link/exchange`
+  5. Backend creates Connection and fetches accounts/transactions
+  6. Modal closes, emits 'connected' event to parent
+- **Key Methods:**
+  - `open()` - Opens modal, prepares iframe URL
+  - `onMessage()` - Handles postMessage from Flinks
+  - `handleLoginId()` - Exchanges LoginId with backend
+
+**`frontend/src/app/state/auth.store.ts`**
+- Signal-based authentication state
+- Syncs to localStorage (key: `finlo.auth.session`)
+- Used by `@if (authStore.user())` in templates
+
+### Database Schema
+
+**`backend/prisma/schema.prisma`**
+- **User** - User accounts (email, password hash, verification status)
+- **EmailToken** - Hashed verification tokens (24h TTL)
+- **EmailLog** - Tracks email sends (enforces 5min cooldown)
+- **RefreshToken** - JWT refresh tokens (30 day TTL)
+- **Institution** - Bank institutions (e.g., "FlinksCapital")
+- **Connection** - User's bank connections (links to Institution, stores LoginId)
+- **Account** - Bank accounts (balance, type, externalId from Flinks)
+- **Transaction** - Transaction history (amount, date, description)
+- **Budget** - User-defined budgets
 
 ---
 
@@ -200,15 +306,24 @@ SMTP_PASSWORD=your-brevo-smtp-key
 ```env
 FLINKS_MODE=sandbox
 FLINKS_BASE_URL=https://toolbox-api.private.fin.ag/v3
-FLINKS_CONNECT_URL=https://toolbox.flinks.com/v3
-
-# For production, add:
-# FLINKS_CLIENT_ID=your-client-id
-# FLINKS_SECRET=your-secret
+FLINKS_CONNECT_URL=https://toolbox-iframe.private.fin.ag/v2/
+FLINKS_CUSTOMER_ID=your-customer-id
+FLINKS_BEARER_TOKEN=your-bearer-token
+FLINKS_AUTH_KEY=your-auth-key
+FLINKS_API_KEY=your-api-key
 ```
 
-> **Sandbox:** No credentials needed! Use institution "FlinksCapital" with username/password "Greatday"  
+> **Sandbox:** Use institution "FlinksCapital" with username/password "Greatday"  
 > **Production:** See `FLINKS_INTEGRATION.md` for setup instructions.
+
+**Flinks Flow:**
+1. User clicks "Connect Bank" → modal opens with iframe URL from `environment.ts`
+2. User authenticates inside Flinks iframe (hardcoded URL: `https://toolbox-iframe.private.fin.ag/v2/?demo=true`)
+3. Flinks posts LoginId via `window.postMessage` back to the component
+4. Component sends LoginId to backend `/api/connections/link/exchange`
+5. Backend exchanges LoginId with Flinks API for institution data
+6. Backend creates Connection, fetches accounts & transactions, stores in database
+7. Modal closes and parent component refreshes data
 
 ---
 
@@ -243,9 +358,20 @@ FLINKS_CONNECT_URL=https://toolbox.flinks.com/v3
 
 1. Go to the **Connections** page
 2. Click **"Link Bank (Flinks)"**
-3. In the modal, select **"FlinksCapital"** institution
-4. Use credentials: Username `Greatday`, Password `Greatday`
-5. Complete the flow - your accounts will appear on the Accounts page
+3. A modal opens with the Flinks Connect iframe
+4. Select institution **"FlinksCapital"**
+5. Use credentials: Username `Greatday`, Password `Greatday`
+6. After successful authentication, Flinks posts a LoginId back to the page
+7. The modal automatically closes and exchanges the LoginId with the backend
+8. Your accounts and transactions will appear on the Accounts page
+
+**Behind the scenes:**
+- Frontend: Embeds iframe URL from `environment.ts` (`https://toolbox-iframe.private.fin.ag/v2/?demo=true`)
+- Flinks: User authenticates, posts LoginId via `postMessage`
+- Frontend: Sends LoginId to `/api/connections/link/exchange`
+- Backend: Calls Flinks `/AccountsSummary` API to exchange LoginId
+- Backend: Calls Flinks `/AccountsDetail` API to fetch accounts & transactions
+- Backend: Stores Connection, Accounts, and Transactions in database
 
 ### 4. View Your Data
 
@@ -338,12 +464,20 @@ docker compose build --no-cache backend  # Rebuild backend image
 
 1. Navigate to **Connections** page
 2. Click **"Link Bank (Flinks)"**
-3. A modal opens with Flinks Connect iframe
+3. A modal opens with Flinks Connect iframe (URL from `frontend/src/environments/environment.ts`)
 4. Select institution **"FlinksCapital"**
 5. Enter username `Greatday` and password `Greatday`
-6. Complete the flow
-7. Check the **Accounts** page - you should see new accounts
-8. Check **Transactions** page - you should see transaction history
+6. Complete authentication - Flinks posts LoginId back to parent window
+7. Modal closes automatically and sends LoginId to backend
+8. Backend exchanges LoginId with Flinks API and creates database records
+9. Check the **Accounts** page - you should see new accounts
+10. Check **Transactions** page - you should see transaction history
+
+**Files Involved:**
+- `frontend/src/environments/environment.ts` - Hardcoded iframe URL
+- `frontend/src/app/shared/components/flinks-connect-button.component.ts` - Modal & postMessage handler
+- `backend/src/connections/connections.controller.ts` - `/link/exchange` endpoint
+- `backend/src/providers/flinks/flinks.adapter.ts` - Flinks API integration
 
 ### Password Reset Flow
 
@@ -497,6 +631,123 @@ FLINKS_CONNECT_URL=https://connect.flinks.io/v3
 ## 📄 License
 
 This project is licensed under the MIT License.
+
+---
+
+## 🔗 How Flinks Integration Works
+
+### Architecture Overview
+
+The Flinks integration uses an **iframe-based flow** where users authenticate directly with their bank inside a Flinks-hosted widget:
+
+```
+┌─────────────┐                    ┌──────────────┐                    ┌─────────────┐
+│   Frontend  │                    │   Backend    │                    │   Flinks    │
+│   (Angular) │                    │   (NestJS)   │                    │   API       │
+└─────────────┘                    └──────────────┘                    └─────────────┘
+       │                                   │                                   │
+       │ 1. User clicks "Connect Bank"    │                                   │
+       │────────────────────────────────>  │                                   │
+       │                                   │                                   │
+       │ 2. Opens modal with iframe       │                                   │
+       │    (URL from environment.ts)     │                                   │
+       │    https://toolbox-iframe...     │                                   │
+       │    /v2/?demo=true               │                                   │
+       │                                   │                                   │
+       │                                   │                                   │
+       │ 3. User authenticates inside     │                                   │
+       │    Flinks iframe (selects bank,  │                                   │
+       │    enters credentials)            │                                   │
+       │                                   │                                   │
+       │ <────────────────────────────────────────────────────────────────── │
+       │    4. Flinks posts LoginId via window.postMessage                  │
+       │                                   │                                   │
+       │ 5. POST /api/connections         │                                   │
+       │    /link/exchange                 │                                   │
+       │    { userId, loginId }            │                                   │
+       │─────────────────────────────────> │                                   │
+       │                                   │ 6. POST /AccountsSummary          │
+       │                                   │    { LoginId }                    │
+       │                                   │─────────────────────────────────> │
+       │                                   │                                   │
+       │                                   │ <─────────────────────────────── │
+       │                                   │    { Institution, ... }           │
+       │                                   │                                   │
+       │                                   │ 7. POST /AccountsDetail           │
+       │                                   │    { LoginId }                    │
+       │                                   │─────────────────────────────────> │
+       │                                   │                                   │
+       │                                   │ <─────────────────────────────── │
+       │                                   │    { Accounts, Transactions }     │
+       │                                   │                                   │
+       │                                   │ 8. Saves to database:             │
+       │                                   │    - Connection record            │
+       │                                   │    - Account records              │
+       │                                   │    - Transaction records          │
+       │                                   │                                   │
+       │ <───────────────────────────────  │                                   │
+       │    9. Returns success             │                                   │
+       │                                   │                                   │
+       │ 10. Closes modal, refreshes data │                                   │
+```
+
+### File Responsibilities
+
+1. **`frontend/src/environments/environment.ts`**
+   - Stores hardcoded Flinks iframe URL: `https://toolbox-iframe.private.fin.ag/v2/?demo=true`
+   - This URL never changes and doesn't need backend API call
+
+2. **`frontend/src/app/shared/components/flinks-connect-button.component.ts`**
+   - Renders modal with iframe pointing to URL from environment.ts
+   - Listens for `window.postMessage` events from Flinks iframe
+   - When LoginId arrives, sends it to backend `/api/connections/link/exchange`
+
+3. **`backend/src/connections/connections.controller.ts`**
+   - Endpoint: `POST /api/connections/link/exchange`
+   - Receives `{ userId, loginId }` from frontend
+   - Calls `ConnectionsService.linkAccount()`
+
+4. **`backend/src/providers/flinks/flinks.adapter.ts`**
+   - `exchangeLoginId()` - Calls Flinks `/AccountsSummary` to get institution info
+   - `fetchAccounts()` - Calls Flinks `/AccountsDetail` to get account balances
+   - `fetchTransactions()` - Extracts transactions from `/AccountsDetail` response
+   - Uses Bearer token, API key, and auth key from `backend/.env`
+
+5. **`backend/src/connections/connections.service.ts`**
+   - Orchestrates the full flow:
+     1. Exchange LoginId for institution data
+     2. Create Institution record (if not exists)
+     3. Create Connection record
+     4. Fetch and save Accounts
+     5. Fetch and save Transactions
+
+### Environment Variables
+
+**Backend (`backend/.env`):**
+```env
+FLINKS_MODE=sandbox
+FLINKS_BASE_URL=https://toolbox-api.private.fin.ag/v3
+FLINKS_CONNECT_URL=https://toolbox-iframe.private.fin.ag/v2/
+FLINKS_CUSTOMER_ID=43387ca6-0391-4c82-857d-70d95f087ecb
+FLINKS_BEARER_TOKEN=O2r9FLhO7PBqz9L
+FLINKS_AUTH_KEY=c4569c54-e167-4d34-8de6-f4113bc82414
+FLINKS_API_KEY=3d5266a8-b697-48d4-8de6-52e2e2662acc
+```
+
+**Frontend (`frontend/src/environments/environment.ts`):**
+```typescript
+export const environment = {
+  FLINKS_CONNECT_URL: 'https://toolbox-iframe.private.fin.ag/v2/?demo=true',
+  FLINKS_ORIGIN: 'https://toolbox-iframe.private.fin.ag',
+};
+```
+
+### Security Notes
+
+- Frontend iframe URL is **hardcoded** and doesn't change per user
+- Backend credentials (bearer token, API key) are **never exposed** to frontend
+- `postMessage` origin is **validated** to prevent malicious messages
+- LoginId is **single-use** and only valid for the specific authentication session
 
 ---
 

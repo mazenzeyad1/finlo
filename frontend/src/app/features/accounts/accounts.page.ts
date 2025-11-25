@@ -10,35 +10,7 @@ import { ConnectionApi } from '../api/connection.api';
   standalone: true,
   selector: 'app-accounts',
   imports: [CommonModule, NgFor, MoneyComponent],
-  template: `
-    <section class="page">
-      <header class="page-header accounts-header">
-        <div>
-          <h1>Accounts</h1>
-          <p class="muted">A quick look at balances across institutions.</p>
-        </div>
-        <button class="btn" type="button" (click)="linkBank()" [disabled]="isLinking">
-          {{ isLinking ? 'Linking…' : 'Link new bank' }}
-        </button>
-      </header>
-
-      <div class="card-grid">
-        <article *ngFor="let a of store.accounts()" class="card account-card">
-          <header class="card-title-row">
-            <span class="card-title">{{ a.name }}</span>
-            <span class="badge">{{ formatType(a.type) }}</span>
-          </header>
-          <dl class="account-meta">
-            <div><dt>Institution</dt><dd>{{ a.connectionId }}</dd></div>
-            <div><dt>Account #</dt><dd>{{ a.mask || '—' }}</dd></div>
-          </dl>
-          <div class="account-balance">
-            <ui-money [amount]="a.balance" [currency]="a.currency"></ui-money>
-          </div>
-        </article>
-      </div>
-    </section>
-  `
+  templateUrl: './accounts.page.html'
 })
 export class AccountsPage {
   private accountApi = inject(AccountApi);

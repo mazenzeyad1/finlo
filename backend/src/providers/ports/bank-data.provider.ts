@@ -1,6 +1,6 @@
 export interface BankDataProvider {
   getLinkToken(userId: string): Promise<{ linkToken: string }>;
-  exchangePublicToken(publicToken: string): Promise<{
+  exchangeLoginId(loginId: string): Promise<{
     accessToken: string;
     institution: { id: string; name: string };
   }>;
