@@ -1,3 +1,4 @@
+// backend/src/connections/connections.service.ts
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../common/prisma.service';
 import { AccountType } from '@prisma/client';
@@ -5,10 +6,19 @@ import { FlinksAdapter } from '../providers/flinks/flinks.adapter';
 
 @Injectable()
 export class ConnectionsService {
-  constructor(private prisma: PrismaService, private flinks: FlinksAdapter) {}
+  constructor(
+    private prisma: PrismaService,
+    private flinks: FlinksAdapter,
+  ) {}
 
-  async startLink(userId: string) {
-    return this.flinks.getLinkToken(userId);
+  /**
+   * Start the Flinks link flow.
+   * Returns an iframe URL (with demo=true and authorizeToken) that the frontend
+   * embeds in the FlinksConnectButton component.
+   */
+  async startLink(): Promise<{ linkToken: string }> {
+    // No userId is needed to generate the authorize token / iframe URL
+    return this.flinks.getLinkToken();
   }
 
   /**
@@ -17,17 +27,29 @@ export class ConnectionsService {
    */
   async exchangeLoginId(userId: string, loginId: string) {
     const res = await this.flinks.exchangeLoginId(loginId);
+
+    // Upsert institution
     await this.prisma.institution.upsert({
       where: { id: res.institution.id },
-      create: { id: res.institution.id, name: res.institution.name, provider: 'flinks' },
-      update: { name: res.institution.name, provider: 'flinks' },
+      create: {
+        id: res.institution.id,
+        name: res.institution.name,
+        provider: 'flinks',
+      },
+      update: {
+        name: res.institution.name,
+        provider: 'flinks',
+      },
     });
+
+    // Create connection using LoginId as accessToken
     const connection = await this.prisma.connection.create({
       data: {
         userId,
         institutionId: res.institution.id,
         accessToken: loginId,
         status: 'active',
+        cursor: null,
       },
     });
 
@@ -37,6 +59,9 @@ export class ConnectionsService {
     return { connectionId: connection.id };
   }
 
+  /**
+   * Sync accounts + transactions for a given connection.
+   */
   async syncConnection(connectionId: string) {
     const connection = await this.prisma.connection.findUnique({
       where: { id: connectionId },
@@ -57,9 +82,16 @@ export class ConnectionsService {
 
     // Helper to coerce incoming string to Prisma enum
     const toAccountType = (t: string): AccountType => {
-      const valid: AccountType[] = ['checking', 'savings', 'credit', 'loan', 'investment'];
-      return (valid as string[]).includes((t || '').toLowerCase())
-        ? (t.toLowerCase() as AccountType)
+      const valid: AccountType[] = [
+        'checking',
+        'savings',
+        'credit',
+        'loan',
+        'investment',
+      ];
+      const lower = (t || '').toLowerCase();
+      return (valid as string[]).includes(lower)
+        ? (lower as AccountType)
         : 'checking';
     };
 
@@ -85,10 +117,9 @@ export class ConnectionsService {
       accountIdMap.set(acc.externalId, account.id);
     }
 
-    // Fetch and store transactions
-    const { transactions, nextCursor } = await this.flinks.fetchTransactions(loginId, {
-      cursor: connection.cursor,
-    });
+    // Fetch transactions (no cursor/pagination for now)
+    const result = await this.flinks.fetchTransactions(loginId);
+    const transactions = result.transactions;
 
     for (const txn of transactions) {
       const accountId = accountIdMap.get(txn.accountExternalId);
@@ -113,12 +144,16 @@ export class ConnectionsService {
       });
     }
 
-    // Update cursor for incremental syncs
+    // We’re not using pagination/cursor yet, so just keep cursor as null
     await this.prisma.connection.update({
       where: { id: connectionId },
-      data: { cursor: nextCursor },
+      data: { cursor: null },
     });
 
-    return { synced: true, accountsCount: accounts.length, transactionsCount: transactions.length };
+    return {
+      synced: true,
+      accountsCount: accounts.length,
+      transactionsCount: transactions.length,
+    };
   }
 }

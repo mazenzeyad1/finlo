@@ -1,3 +1,4 @@
+// backend/src/connections/connections.controller.ts
 import { Body, Controller, Get, Post, Query, Param } from '@nestjs/common';
 import { ConnectionsService } from './connections.service';
 
@@ -5,9 +6,11 @@ import { ConnectionsService } from './connections.service';
 export class ConnectionsController {
   constructor(private readonly svc: ConnectionsService) {}
 
+  // Start Flinks link flow – returns iframe URL (with authorizeToken)
   @Post('link/start')
-  start(@Body() body: { userId: string }) {
-    return this.svc.startLink(body.userId);
+  start() {
+    // No userId here – the link token is not user-specific
+    return this.svc.startLink();
   }
 
   @Post('link/exchange')

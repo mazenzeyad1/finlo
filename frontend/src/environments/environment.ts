@@ -11,7 +11,8 @@
  */
 export const environment = {
   production: false,
+  apiBase: 'http://localhost:3000/api',
   FLINKS_CONNECT_URL: 'https://toolbox-iframe.private.fin.ag/v2/?demo=true',
-  FLINKS_ORIGIN: 'https://toolbox-iframe.private.fin.ag' as string,
+  FLINKS_ORIGIN: 'https://toolbox-iframe.private.fin.ag',
 };
  
