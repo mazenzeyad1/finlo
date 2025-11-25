@@ -1,0 +1,59 @@
+<div class="auth-page">
+  <section class="auth-card">
+    <header>
+      <h1>Create your account</h1>
+      <p class="muted">Start syncing bank data and track every balance in one place.</p>
+    </header>
+
+    <form [formGroup]="form" (ngSubmit)="submit()" *ngIf="status() !== 'success'" novalidate>
+      <label>
+        Full name
+        <input type="text" formControlName="name" placeholder="Alex Rivera" [disabled]="status() === 'submitting'" />
+      </label>
+      <label>
+        Work email
+        <input type="email" formControlName="email" placeholder="you@company.com" [disabled]="status() === 'submitting'" />
+      </label>
+      <label>
+        Password
+        <input type="password" formControlName="password" placeholder="Minimum 8 characters" [disabled]="status() === 'submitting'" />
+      </label>
+      <p class="error" *ngIf="errorMessage()">{{ errorMessage() }}</p>
+      <button type="submit" [disabled]="status() === 'submitting'">
+        {{ status() === 'submitting' ? 'Creating account…' : 'Create account' }}
+      </button>
+      <p class="helper">
+        Already have access?
+        <a routerLink="/auth/signin">Sign in</a>
+      </p>
+    </form>
+
+    <div *ngIf="status() === 'success'" class="success-state">
+      <h2>Account created</h2>
+      <p>We sent a verification email so you can confirm {{ form.controls.email.value }}.</p>
+      <p *ngIf="verificationToken()" class="dev-token">
+        Dev preview token: <code>{{ verificationToken() }}</code>
+      </p>
+      <div class="resend-feedback" *ngIf="resendMessage()">
+        {{ resendMessage() }}
+      </div>
+      <div class="actions">
+        <a routerLink="/dashboard" class="btn">Go to dashboard</a>
+        <button type="button" class="ghost" (click)="resetForm()">Create another</button>
+        <button
+          type="button"
+          class="ghost"
+          [disabled]="resendState() === 'loading'"
+          (click)="resendVerification()"
+        >{{ resendState() === 'loading' ? 'Sending…' : 'Resend verification email' }}</button>
+        <a
+          href="http://localhost:8025"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="ghost-link"
+        >Open local inbox</a>
+      </div>
+      <p class="resend-hint">The link contains a one-time token that marks your email as verified when opened.</p>
+    </div>
+  </section>
+</div>

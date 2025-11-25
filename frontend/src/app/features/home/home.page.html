@@ -1,0 +1,17 @@
+<section class="landing">
+  <header>
+    <p class="eyebrow">Personal finance dashboard</p>
+    <h1>Sign in to continue</h1>
+    <p class="tagline">Connect all of your financial institutions, monitor balances, and stay ahead of cash flow.</p>
+  </header>
+
+  <div class="cta-grid">
+    <a routerLink="/auth/signin" class="cta primary">Sign in</a>
+    <a routerLink="/auth/signup" class="cta outline">Create an account</a>
+  </div>
+
+  <footer *ngIf="auth.isAuthenticated()" class="authed-banner">
+    <span>You are already signed in as {{ auth.user()?.email }}.</span>
+    <button type="button" (click)="goToDashboard()">Go to dashboard</button>
+  </footer>
+</section>

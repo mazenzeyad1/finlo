@@ -8,28 +8,7 @@ import { AuthStore } from '../../state/auth.store';
   standalone: true,
   selector: 'app-verify',
   imports: [CommonModule, RouterLink],
-  template: `
-    <div class="p-6 max-w-lg mx-auto">
-      <h1 class="text-2xl font-semibold mb-4">Email verification</h1>
-
-      <ng-container [ngSwitch]="state()">
-        <p *ngSwitchCase="'loading'">Verifying your email…</p>
-
-        <div *ngSwitchCase="'ok'" class="space-y-4">
-          <p class="font-medium">Verified 🎉</p>
-          <a routerLink="/login" class="underline">Go to Login</a>
-        </div>
-
-        <div *ngSwitchCase="'error'" class="space-y-4">
-          <p class="text-red-600">This verification link is invalid or expired.</p>
-          <button (click)="resend()" [disabled]="cooldown()>0" class="border rounded px-3 py-1">
-            Resend verification email
-          </button>
-          <span *ngIf="cooldown()>0">Try again in {{ cooldown() }}s</span>
-        </div>
-      </ng-container>
-    </div>
-  `,
+  templateUrl: './verify.page.html',
 })
 export default class VerifyPage {
   private api = inject(AuthApi);

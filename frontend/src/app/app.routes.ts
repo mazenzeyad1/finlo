@@ -13,6 +13,7 @@ export const routes: Routes = [
   { path: 'verify-email', pathMatch: 'full', redirectTo: 'verify' },
   { path: 'dashboard', canActivate: [authGuard], loadComponent: () => import('./features/dashboard/dashboard.page').then(m => m.DashboardPage) },
   { path: 'accounts', canActivate: [authGuard], loadComponent: () => import('./features/accounts/accounts.page').then(m => m.AccountsPage) },
+  { path: 'connections', canActivate: [authGuard], loadComponent: () => import('./features/connections/connections.page').then(m => m.ConnectionsPage) },
   { path: 'transactions', canActivate: [authGuard], loadComponent: () => import('./features/transactions/transactions.page').then(m => m.TransactionsPage) },
   { path: 'budgets', canActivate: [authGuard], loadComponent: () => import('./features/budgets/budgets.page').then(m => m.BudgetsPage) },
   { path: 'welcome', loadComponent: () => import('./features/home/home.page').then(m => m.HomePage) },
