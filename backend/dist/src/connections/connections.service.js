@@ -18,15 +18,22 @@ let ConnectionsService = class ConnectionsService {
         this.prisma = prisma;
         this.flinks = flinks;
     }
-    async startLink(userId) {
-        return this.flinks.getLinkToken(userId);
+    async startLink() {
+        return this.flinks.getLinkToken();
     }
     async exchangeLoginId(userId, loginId) {
         const res = await this.flinks.exchangeLoginId(loginId);
         await this.prisma.institution.upsert({
             where: { id: res.institution.id },
-            create: { id: res.institution.id, name: res.institution.name, provider: 'flinks' },
-            update: { name: res.institution.name, provider: 'flinks' },
+            create: {
+                id: res.institution.id,
+                name: res.institution.name,
+                provider: 'flinks',
+            },
+            update: {
+                name: res.institution.name,
+                provider: 'flinks',
+            },
         });
         const connection = await this.prisma.connection.create({
             data: {
@@ -34,6 +41,7 @@ let ConnectionsService = class ConnectionsService {
                 institutionId: res.institution.id,
                 accessToken: loginId,
                 status: 'active',
+                cursor: null,
             },
         });
         await this.syncConnection(connection.id);
@@ -51,9 +59,16 @@ let ConnectionsService = class ConnectionsService {
         const accounts = await this.flinks.fetchAccounts(loginId);
         const accountIdMap = new Map();
         const toAccountType = (t) => {
-            const valid = ['checking', 'savings', 'credit', 'loan', 'investment'];
-            return valid.includes((t || '').toLowerCase())
-                ? t.toLowerCase()
+            const valid = [
+                'checking',
+                'savings',
+                'credit',
+                'loan',
+                'investment',
+            ];
+            const lower = (t || '').toLowerCase();
+            return valid.includes(lower)
+                ? lower
                 : 'checking';
         };
         for (const acc of accounts) {
@@ -76,9 +91,8 @@ let ConnectionsService = class ConnectionsService {
             });
             accountIdMap.set(acc.externalId, account.id);
         }
-        const { transactions, nextCursor } = await this.flinks.fetchTransactions(loginId, {
-            cursor: connection.cursor,
-        });
+        const result = await this.flinks.fetchTransactions(loginId);
+        const transactions = result.transactions;
         for (const txn of transactions) {
             const accountId = accountIdMap.get(txn.accountExternalId);
             if (!accountId)
@@ -103,14 +117,19 @@ let ConnectionsService = class ConnectionsService {
         }
         await this.prisma.connection.update({
             where: { id: connectionId },
-            data: { cursor: nextCursor },
+            data: { cursor: null },
         });
-        return { synced: true, accountsCount: accounts.length, transactionsCount: transactions.length };
+        return {
+            synced: true,
+            accountsCount: accounts.length,
+            transactionsCount: transactions.length,
+        };
     }
 };
 exports.ConnectionsService = ConnectionsService;
 exports.ConnectionsService = ConnectionsService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_1.PrismaService, flinks_adapter_1.FlinksAdapter])
+    __metadata("design:paramtypes", [prisma_service_1.PrismaService,
+        flinks_adapter_1.FlinksAdapter])
 ], ConnectionsService);
 //# sourceMappingURL=connections.service.js.map

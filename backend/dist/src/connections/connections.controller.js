@@ -19,8 +19,8 @@ let ConnectionsController = class ConnectionsController {
     constructor(svc) {
         this.svc = svc;
     }
-    start(body) {
-        return this.svc.startLink(body.userId);
+    start() {
+        return this.svc.startLink();
     }
     exchange(body) {
         console.log('[ConnectionsController] exchange loginId =', body?.loginId);
@@ -42,9 +42,8 @@ let ConnectionsController = class ConnectionsController {
 exports.ConnectionsController = ConnectionsController;
 __decorate([
     (0, common_1.Post)('link/start'),
-    __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object]),
+    __metadata("design:paramtypes", []),
     __metadata("design:returntype", void 0)
 ], ConnectionsController.prototype, "start", null);
 __decorate([
